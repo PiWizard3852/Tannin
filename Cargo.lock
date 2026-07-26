@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "compiler"
+name = "tannin"
 version = "0.1.0"

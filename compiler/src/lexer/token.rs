@@ -76,13 +76,12 @@ pub enum TokenKind {
 
     And,
     Or,
-    Carrot,
+    Caret,
     Tilde,
 
     AndEqual,
     OrEqual,
-    CarrotEqual,
-    TildeEqual,
+    CaretEqual,
 
     AndAnd,
     OrOr,

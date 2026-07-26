@@ -1,6 +1,3 @@
-pub mod scanner;
-pub mod token;
-
 mod scanner;
 mod token;
 

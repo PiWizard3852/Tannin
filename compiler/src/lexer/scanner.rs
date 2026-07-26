@@ -1,11 +1,11 @@
 use crate::lexer::{Span, Token, TokenKind};
 
-pub struct Scanner<'a> {
+pub struct Scanner {
     chars: Vec<char>,
     position: usize,
 }
 
-impl<'a> Scanner<'a> {
+impl<'a> Scanner {
     pub fn new(source: &'a str) -> Self {
         Self {
             chars: source.chars().collect(),
@@ -27,18 +27,18 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::PlusEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::PlusEqual, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('+') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::PlusPlus, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::PlusPlus, Span::new(start, self.position)));
                         continue;
                     }
 
-                    result.push(Token::new(TokenKind::Plus, Span::new(start, self.position)))
+                    result.push(Token::new(TokenKind::Plus, Span::new(start, self.position)));
                 },
                 Some('-') => {
                     let next_char = self.peek();
@@ -46,21 +46,21 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::MinusEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::MinusEqual, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('-') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::MinusMinus, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::MinusMinus, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('>') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::Arrow, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::Arrow, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -72,7 +72,7 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::StarEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::StarEqual, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -84,7 +84,39 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::SlashEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::SlashEqual, Span::new(start, self.position)));
+                        continue;
+                    }
+
+                    if let Some('/') = next_char {
+                        self.advance();
+
+                        while let Some(c) = self.peek() {
+                            self.advance();
+
+                            if c == '\n' {
+                                break;
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if let Some('*') = next_char {
+                        self.advance();
+
+                        while let Some(c) = self.peek() {
+                            self.advance();
+
+                            if c == '*' {
+                                if let Some('/') = self.peek() {
+                                    self.advance();
+
+                                    break;
+                                }
+                            }
+                        }
+
                         continue;
                     }
 
@@ -98,14 +130,14 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::EqualEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::EqualEqual, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('>') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::FatArrow, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::FatArrow, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -117,7 +149,7 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::NotEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::NotEqual, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -130,7 +162,7 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::LessEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::LessEqual, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -142,7 +174,7 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::GreaterEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::GreaterEqual, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -155,14 +187,14 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::AndEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::AndEqual, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('&') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::AndAnd, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::AndAnd, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -174,14 +206,14 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::OrEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::OrEqual, Span::new(start, self.position)));
                         continue;
                     }
 
                     if let Some('|') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::OrOr, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::OrOr, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -193,24 +225,13 @@ impl<'a> Scanner<'a> {
                     if let Some('=') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::CarrotEqual, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::CaretEqual, Span::new(start, self.position)));
                         continue;
                     }
 
-                    result.push(Token::new(TokenKind::Carrot, Span::new(start, self.position)))
+                    result.push(Token::new(TokenKind::Caret, Span::new(start, self.position)))
                 },
-                Some('~') => {
-                    let next_char = self.peek();
-
-                    if let Some('=') = next_char {
-                        self.advance();
-
-                        result.push(Token::new(TokenKind::TildeEqual, Span::new(start, self.position)))
-                        continue;
-                    }
-
-                    result.push(Token::new(TokenKind::Tilde, Span::new(start, self.position)))
-                },
+                Some('~') => result.push(Token::new(TokenKind::Tilde, Span::new(start, self.position))),
 
                 Some(',') => result.push(Token::new(TokenKind::Comma, Span::new(start, self.position))),
                 Some(';') => result.push(Token::new(TokenKind::Semicolon, Span::new(start, self.position))),
@@ -220,7 +241,7 @@ impl<'a> Scanner<'a> {
                     if let Some(':') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::ColonColon, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::ColonColon, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -233,7 +254,7 @@ impl<'a> Scanner<'a> {
                     if let Some('.') = next_char {
                         self.advance();
 
-                        result.push(Token::new(TokenKind::DotDot, Span::new(start, self.position)))
+                        result.push(Token::new(TokenKind::DotDot, Span::new(start, self.position)));
                         continue;
                     }
 
@@ -279,12 +300,15 @@ impl<'a> Scanner<'a> {
         return result;
     }
 
-    fn peek(&self) -> Option<&char> {
-        self.chars.get(self.position)
+    fn peek(&self) -> Option<char> {
+        return match self.chars.get(self.position) {
+            None => None,
+            Some(c) => Some(*c)
+        }
     }
 
-    fn advance(&mut self) -> Option<&char> {
-        let char = self.chars.get(self.position);
+    fn advance(&mut self) -> Option<char> {
+        let char = self.peek();
 
         self.position += 1;
 
@@ -323,7 +347,7 @@ impl<'a> Scanner<'a> {
         let start = self.position - 1;
 
         while let Some(next_char) = self.peek() {
-            if *next_char == '"' {
+            if next_char == '"' {
                 self.advance();
 
                 return Token::new(
@@ -332,7 +356,7 @@ impl<'a> Scanner<'a> {
                 );
             }
 
-            if *next_char == '\\' {
+            if next_char == '\\' {
                 self.advance();
 
                 let escaped = match self.advance() {
@@ -350,26 +374,26 @@ impl<'a> Scanner<'a> {
                 continue;
             }
 
-            value.push(*next_char);
+            value.push(next_char);
             self.advance();
         }
 
         panic!("Unterminated string literal.");
     }
 
-    fn parse_identifier(&mut self, first_char: &char) -> Token {
+    fn parse_identifier(&mut self, first_char: char) -> Token {
         let mut value = first_char.to_string();
         let start = self.position - 1;
 
         while let Some(next_char) = self.peek() {
-            if !(*next_char.is_ascii_alphanumeric() || *next_char == '_') {
+            if !(next_char.is_ascii_alphanumeric() || next_char == '_') {
                 return Token::new(
                     self.parse_keyword(value),
                     Span::new(start, self.position),
                 );
             }
 
-            value.push(*next_char);
+            value.push(next_char);
             self.advance();
         }
 
@@ -405,12 +429,12 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn parse_numeric(&mut self, first_char: &char) -> Token {
+    fn parse_numeric(&mut self, first_char: char) -> Token {
         let mut value = first_char.to_string();
         let start = self.position - 1;
 
         while let Some(next_char) = self.peek() {
-            if !(*next_char.is_numeric() || *next_char == '_' || (!value.contains('.') && *next_char == '.')) {
+            if !(next_char.is_numeric() || next_char == '_' || (!value.contains('.') && next_char == '.')) {
                 return if value.contains('.') {
                     Token::new(
                         TokenKind::Float(value),
@@ -424,7 +448,7 @@ impl<'a> Scanner<'a> {
                 }
             }
 
-            value.push(*next_char);
+            value.push(next_char);
             self.advance();
         }
 
