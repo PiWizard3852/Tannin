@@ -1,14 +1,4 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
-}
+use crate::common::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Token {
@@ -61,6 +51,7 @@ pub enum TokenKind {
     MinusEqual,
     StarEqual,
     SlashEqual,
+    PercentEqual,
 
     PlusPlus,
     MinusMinus,
@@ -73,6 +64,12 @@ pub enum TokenKind {
     Greater,
     LessEqual,
     GreaterEqual,
+
+    GreaterGreater,
+    LessLess,
+
+    GreaterGreaterEqual,
+    LessLessEqual,
 
     And,
     Or,

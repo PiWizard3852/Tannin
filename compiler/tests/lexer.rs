@@ -1,4 +1,4 @@
-use tannin::lexer::{Scanner, TokenKind};
+use compiler::lexer::{Scanner, TokenKind};
 
 fn lex(source: &str) -> Vec<TokenKind> {
     let mut scanner = Scanner::new(source);

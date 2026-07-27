@@ -1,4 +1,5 @@
-use crate::lexer::{Span, Token, TokenKind};
+use crate::common::Span;
+use crate::lexer::{Token, TokenKind};
 
 pub struct Scanner {
     chars: Vec<char>,
@@ -39,7 +40,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Plus, Span::new(start, self.position)));
-                },
+                }
                 Some('-') => {
                     let next_char = self.peek();
 
@@ -65,7 +66,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Minus, Span::new(start, self.position)))
-                },
+                }
                 Some('*') => {
                     let next_char = self.peek();
 
@@ -77,7 +78,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Star, Span::new(start, self.position)))
-                },
+                }
                 Some('/') => {
                     let next_char = self.peek();
 
@@ -122,7 +123,18 @@ impl<'a> Scanner {
 
                     result.push(Token::new(TokenKind::Slash, Span::new(start, self.position)))
                 }
-                Some('%') => result.push(Token::new(TokenKind::Percent, Span::new(start, self.position))),
+                Some('%') => {
+                    let next_char = self.peek();
+
+                    if let Some('=') = next_char {
+                        self.advance();
+
+                        result.push(Token::new(TokenKind::PercentEqual, Span::new(start, self.position)));
+                        continue;
+                    }
+
+                    result.push(Token::new(TokenKind::Percent, Span::new(start, self.position)))
+                }
 
                 Some('=') => {
                     let next_char = self.peek();
@@ -142,7 +154,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Equal, Span::new(start, self.position)))
-                },
+                }
                 Some('!') => {
                     let next_char = self.peek();
 
@@ -154,7 +166,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Not, Span::new(start, self.position)))
-                },
+                }
 
                 Some('<') => {
                     let next_char = self.peek();
@@ -166,8 +178,22 @@ impl<'a> Scanner {
                         continue;
                     }
 
+                    if let Some('<') = next_char {
+                        self.advance();
+
+                        if let Some('=') = next_char {
+                            self.advance();
+
+                            result.push(Token::new(TokenKind::LessLessEqual, Span::new(start, self.position)));
+                            continue;
+                        }
+
+                        result.push(Token::new(TokenKind::LessLess, Span::new(start, self.position)));
+                        continue;
+                    }
+
                     result.push(Token::new(TokenKind::Less, Span::new(start, self.position)))
-                },
+                }
                 Some('>') => {
                     let next_char = self.peek();
 
@@ -178,8 +204,22 @@ impl<'a> Scanner {
                         continue;
                     }
 
+                    if let Some('>') = next_char {
+                        self.advance();
+
+                        if let Some('=') = next_char {
+                            self.advance();
+
+                            result.push(Token::new(TokenKind::GreaterGreaterEqual, Span::new(start, self.position)));
+                            continue;
+                        }
+
+                        result.push(Token::new(TokenKind::GreaterGreater, Span::new(start, self.position)));
+                        continue;
+                    }
+
                     result.push(Token::new(TokenKind::Greater, Span::new(start, self.position)))
-                },
+                }
 
                 Some('&') => {
                     let next_char = self.peek();
@@ -199,7 +239,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::And, Span::new(start, self.position)))
-                },
+                }
                 Some('|') => {
                     let next_char = self.peek();
 
@@ -218,7 +258,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Or, Span::new(start, self.position)))
-                },
+                }
                 Some('^') => {
                     let next_char = self.peek();
 
@@ -230,7 +270,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Caret, Span::new(start, self.position)))
-                },
+                }
                 Some('~') => result.push(Token::new(TokenKind::Tilde, Span::new(start, self.position))),
 
                 Some(',') => result.push(Token::new(TokenKind::Comma, Span::new(start, self.position))),
@@ -246,7 +286,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Colon, Span::new(start, self.position)))
-                },
+                }
 
                 Some('.') => {
                     let next_char = self.peek();
@@ -259,7 +299,7 @@ impl<'a> Scanner {
                     }
 
                     result.push(Token::new(TokenKind::Dot, Span::new(start, self.position)))
-                },
+                }
 
                 Some('(') => result.push(Token::new(TokenKind::LeftParen, Span::new(start, self.position))),
                 Some(')') => result.push(Token::new(TokenKind::RightParen, Span::new(start, self.position))),
@@ -304,7 +344,7 @@ impl<'a> Scanner {
         return match self.chars.get(self.position) {
             None => None,
             Some(c) => Some(*c)
-        }
+        };
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -426,7 +466,7 @@ impl<'a> Scanner {
             "self" => TokenKind::Self_,
 
             _ => TokenKind::Identifier(value)
-        }
+        };
     }
 
     fn parse_numeric(&mut self, first_char: char) -> Token {
@@ -445,7 +485,7 @@ impl<'a> Scanner {
                         TokenKind::Integer(value),
                         Span::new(start, self.position),
                     )
-                }
+                };
             }
 
             value.push(next_char);
@@ -462,6 +502,6 @@ impl<'a> Scanner {
                 TokenKind::Integer(value),
                 Span::new(start, self.position),
             )
-        }
+        };
     }
 }

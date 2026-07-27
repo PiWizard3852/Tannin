@@ -1,0 +1,230 @@
+use crate::common::Span;
+
+#[derive(Debug, Clone)]
+pub struct Program {
+    pub declarations: Vec<Declaration>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Declaration {
+    Function(FunctionDecl),
+    Struct(StructDecl),
+    Enum(EnumDecl),
+    Const(ConstDecl),
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Option<Type>,
+    pub body: Block,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct StructDecl {
+    pub name: String,
+    pub fields: Vec<Field>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumDecl {
+    pub name: String,
+    pub variants: Vec<EnumVariant>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstDecl {
+    pub name: String,
+    pub type_: Type,
+    pub value: Expression,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Parameter {
+    pub name: String,
+    pub type_: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Field {
+    pub name: String,
+    pub type_: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumVariant {
+    pub name: String,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct Block {
+    pub statements: Vec<Statement>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Statement {
+    Block(Block),
+
+    Let {
+        name: String,
+        mutable: bool,
+        type_: Option<Type>,
+        initializer: Option<Expression>,
+        span: Span,
+    },
+
+    If {
+        condition: Expression,
+        then_branch: Box<Statement>,
+        else_branch: Option<Box<Statement>>,
+        span: Span,
+    },
+
+    While {
+        condition: Expression,
+        body: Box<Statement>,
+        span: Span,
+    },
+
+    Return {
+        value: Option<Expression>,
+        span: Span,
+    },
+
+    Expression {
+        expression: Expression,
+        span: Span,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum Expression {
+    Literal(Literal, Span),
+
+    Identifier(String, Span),
+
+    Unary {
+        operator: UnaryOperator,
+        operand: Box<Expression>,
+        span: Span,
+    },
+
+    Binary {
+        left: Box<Expression>,
+        operator: BinaryOperator,
+        right: Box<Expression>,
+        span: Span,
+    },
+
+    Assignment {
+        target: Box<Expression>,
+        value: Box<Expression>,
+        span: Span,
+    },
+
+    Call {
+        callee: Box<Expression>,
+        arguments: Vec<Expression>,
+        span: Span,
+    },
+
+    Member {
+        object: Box<Expression>,
+        member: String,
+        span: Span,
+    },
+
+    Index {
+        object: Box<Expression>,
+        index: Box<Expression>,
+        span: Span,
+    },
+
+    Match {
+        expression: Box<Expression>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
+
+    Block(Block),
+}
+
+#[derive(Debug, Clone)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub value: Expression,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    Identifier(String),
+    Literal(Literal),
+    EnumVariant(String),
+    Wildcard,
+}
+
+#[derive(Debug, Clone)]
+pub enum Literal {
+    Integer(String),
+    Float(String),
+    String(String),
+    Char(char),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Named(String),
+    Array(Box<Type>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnaryOperator {
+    Negate,
+    Not,
+    BitwiseNot,
+    PreIncrement,
+    PreDecrement,
+    PostIncrement,
+    PostDecrement,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryOperator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Modulo,
+
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+
+    LogicalAnd,
+    LogicalOr,
+
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+
+    AndEqual,
+    OrEqual,
+    XorEqual,
+
+    LeftShift,
+    RightShift,
+}
