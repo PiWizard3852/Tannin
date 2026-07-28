@@ -15,7 +15,7 @@ impl<'a> Scanner {
     }
 
     pub fn scan_tokens(&mut self) -> Vec<Token> {
-        let mut result: Vec<Token> = Vec::new();
+        let mut result = Vec::new();
 
         while self.position <= self.chars.len() {
             let start = self.position;

@@ -2,44 +2,58 @@ use crate::lexer::TokenKind;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Precedence {
-    None,
+    Lowest,
+
     Assignment,
+
     LogicalOr,
     LogicalAnd,
+
     BitwiseOr,
     BitwiseXor,
     BitwiseAnd,
+
     Equality,
     Comparison,
     Shift,
+
     Addition,
     Multiplication,
+
     Unary,
-    Postfix,
+
     Call,
-    Primary,
 }
 
 impl Precedence {
     pub fn next(self) -> Self {
         match self {
-            Precedence::None => Precedence::Assignment,
+            Precedence::Lowest => Precedence::Assignment,
+
             Precedence::Assignment => Precedence::LogicalOr,
+
             Precedence::LogicalOr => Precedence::LogicalAnd,
             Precedence::LogicalAnd => Precedence::BitwiseOr,
+
             Precedence::BitwiseOr => Precedence::BitwiseXor,
             Precedence::BitwiseXor => Precedence::BitwiseAnd,
             Precedence::BitwiseAnd => Precedence::Equality,
+
             Precedence::Equality => Precedence::Comparison,
             Precedence::Comparison => Precedence::Shift,
+
             Precedence::Shift => Precedence::Addition,
             Precedence::Addition => Precedence::Multiplication,
+
             Precedence::Multiplication => Precedence::Unary,
-            Precedence::Unary => Precedence::Postfix,
-            Precedence::Postfix => Precedence::Call,
-            Precedence::Call => Precedence::Primary,
-            Precedence::Primary => Precedence::Primary,
+            Precedence::Unary => Precedence::Call,
+
+            Precedence::Call => Precedence::Call,
         }
+    }
+
+    pub fn is_right_associative(self) -> bool {
+        matches!(self, Precedence::Assignment)
     }
 
     pub fn from_token(token: &TokenKind) -> Self {
@@ -88,16 +102,14 @@ impl Precedence {
             | TokenKind::Slash
             | TokenKind::Percent => Precedence::Multiplication,
 
-            // Postfix
-            TokenKind::PlusPlus
-            | TokenKind::MinusMinus => Precedence::Postfix,
-
-            // Call / indexing / member access
+            // Postfix operators
             TokenKind::LeftParen
             | TokenKind::LeftBracket
-            | TokenKind::Dot => Precedence::Call,
+            | TokenKind::Dot
+            | TokenKind::PlusPlus
+            | TokenKind::MinusMinus => Precedence::Call,
 
-            _ => Precedence::None,
+            _ => Precedence::Lowest,
         }
     }
 }

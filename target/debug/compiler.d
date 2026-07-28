@@ -1,1 +1,0 @@
-/Users/owenwood/Documents/Dev/Personal/Tannin/target/debug/compiler: /Users/owenwood/Documents/Dev/Personal/Tannin/compiler/src/lexer/mod.rs /Users/owenwood/Documents/Dev/Personal/Tannin/compiler/src/lexer/scanner.rs /Users/owenwood/Documents/Dev/Personal/Tannin/compiler/src/lexer/token.rs /Users/owenwood/Documents/Dev/Personal/Tannin/compiler/src/main.rs

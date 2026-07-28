@@ -1,0 +1,8 @@
+enum paylaods
+async
+decent error handling lmao
+more expressive
+fix spec :sob:
+option
+** Self/self
+imports (in lexer but not parser)

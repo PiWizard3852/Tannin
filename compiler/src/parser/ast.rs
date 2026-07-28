@@ -82,13 +82,6 @@ pub enum Statement {
         span: Span,
     },
 
-    If {
-        condition: Expression,
-        then_branch: Box<Statement>,
-        else_branch: Option<Box<Statement>>,
-        span: Span,
-    },
-
     While {
         condition: Expression,
         body: Box<Statement>,
@@ -108,9 +101,15 @@ pub enum Statement {
 
 #[derive(Debug, Clone)]
 pub enum Expression {
-    Literal(Literal, Span),
+    Literal {
+        value: Literal,
+        span: Span,
+    },
 
-    Identifier(String, Span),
+    Identifier {
+        value: String,
+        span: Span,
+    },
 
     Unary {
         operator: UnaryOperator,
@@ -127,6 +126,7 @@ pub enum Expression {
 
     Assignment {
         target: Box<Expression>,
+        operator: AssignmentOperator,
         value: Box<Expression>,
         span: Span,
     },
@@ -152,6 +152,13 @@ pub enum Expression {
     Match {
         expression: Box<Expression>,
         arms: Vec<MatchArm>,
+        span: Span,
+    },
+
+    If {
+        condition: Box<Expression>,
+        then_branch: Block,
+        else_branch: Option<Box<Expression>>,
         span: Span,
     },
 
@@ -186,6 +193,20 @@ pub enum Literal {
 pub enum Type {
     Named(String),
     Array(Box<Type>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AssignmentOperator {
+    Assign,
+    AddAssign,
+    SubAssign,
+    MulAssign,
+    DivAssign,
+    AndAssign,
+    OrAssign,
+    XorAssign,
+    LeftShiftAssign,
+    RightShiftAssign,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
