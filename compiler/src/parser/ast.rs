@@ -16,6 +16,7 @@ pub enum Declaration {
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
     pub name: String,
+    pub pub_: bool,
     pub parameters: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: Block,
@@ -25,6 +26,7 @@ pub struct FunctionDecl {
 #[derive(Debug, Clone)]
 pub struct StructDecl {
     pub name: String,
+    pub pub_: bool,
     pub fields: Vec<Field>,
     pub span: Span,
 }
@@ -32,6 +34,7 @@ pub struct StructDecl {
 #[derive(Debug, Clone)]
 pub struct EnumDecl {
     pub name: String,
+    pub pub_: bool,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
 }
@@ -39,6 +42,7 @@ pub struct EnumDecl {
 #[derive(Debug, Clone)]
 pub struct ConstDecl {
     pub name: String,
+    pub pub_: bool,
     pub type_: Type,
     pub value: Expression,
     pub span: Span,
@@ -84,7 +88,7 @@ pub enum Statement {
 
     While {
         condition: Expression,
-        body: Box<Statement>,
+        body: Block,
         span: Span,
     },
 
@@ -157,7 +161,7 @@ pub enum Expression {
 
     If {
         condition: Box<Expression>,
-        then_branch: Block,
+        then_branch: Box<Expression>,
         else_branch: Option<Box<Expression>>,
         span: Span,
     },
@@ -174,10 +178,24 @@ pub struct MatchArm {
 
 #[derive(Debug, Clone)]
 pub enum Pattern {
-    Identifier(String),
-    Literal(Literal),
-    EnumVariant(String),
-    Wildcard,
+    Identifier {
+        value: String,
+        span: Span,
+    },
+
+    Literal {
+        value: Literal,
+        span: Span,
+    },
+
+    EnumVariant {
+        value: String,
+        span: Span,
+    },
+
+    Wildcard {
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -191,8 +209,15 @@ pub enum Literal {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Named(String),
-    Array(Box<Type>),
+    Named {
+        name: String,
+        span: Span,
+    },
+
+    Array {
+        element: Box<Type>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,6 +227,7 @@ pub enum AssignmentOperator {
     SubAssign,
     MulAssign,
     DivAssign,
+    ModAssign,
     AndAssign,
     OrAssign,
     XorAssign,
@@ -242,10 +268,44 @@ pub enum BinaryOperator {
     BitwiseOr,
     BitwiseXor,
 
-    AndEqual,
-    OrEqual,
-    XorEqual,
-
     LeftShift,
     RightShift,
+}
+
+impl Expression {
+    pub fn span(&self) -> Span {
+        match self {
+            Expression::Literal { span, .. } => *span,
+            Expression::Identifier { span, .. } => *span,
+            Expression::Unary { span, .. } => *span,
+            Expression::Binary { span, .. } => *span,
+            Expression::Assignment { span, .. } => *span,
+            Expression::Call { span, .. } => *span,
+            Expression::Member { span, .. } => *span,
+            Expression::Index { span, .. } => *span,
+            Expression::Match { span, .. } => *span,
+            Expression::If { span, .. } => *span,
+            Expression::Block(block) => block.span,
+        }
+    }
+}
+
+impl Pattern {
+    pub fn span(&self) -> Span {
+        match self {
+            Pattern::Identifier { span, .. } => *span,
+            Pattern::Literal { span, .. } => *span,
+            Pattern::EnumVariant { span, .. } => *span,
+            Pattern::Wildcard { span } => *span,
+        }
+    }
+}
+
+impl Type {
+    pub fn span(&self) -> Span {
+        match self {
+            Type::Named { span, .. } => *span,
+            Type::Array { span, .. } => *span,
+        }
+    }
 }

@@ -103,5 +103,7 @@ pub enum TokenKind {
     LeftBracket,
     RightBracket,
 
+    Underscore,
+
     Eof,
 }

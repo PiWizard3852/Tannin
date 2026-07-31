@@ -3,6 +3,7 @@ async
 decent error handling lmao
 more expressive
 fix spec :sob:
-option
+option/?
 ** Self/self
 imports (in lexer but not parser)
+directory level mods

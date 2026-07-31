@@ -465,6 +465,8 @@ impl<'a> Scanner {
             "false" => TokenKind::False,
             "self" => TokenKind::Self_,
 
+            "_" => TokenKind::Underscore,
+
             _ => TokenKind::Identifier(value)
         };
     }
