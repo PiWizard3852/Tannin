@@ -4,10 +4,8 @@ use crate::common::Span;
 use crate::lexer::{Token, TokenKind};
 use crate::lexer::TokenKind::Eof;
 use crate::parser::ast::*;
-use crate::parser::error::ParseError;
+use crate::parser::error::{ParseError, ParseResult};
 use crate::parser::precedence::Precedence;
-
-pub type ParseResult<T> = Result<T, ParseError>;
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -368,7 +366,19 @@ impl Parser {
     ) -> ParseResult<Expression> {
         let mut left = self.parse_prefix()?;
 
-        while precedence < Precedence::from_token(&self.peek().kind) {
+        loop {
+            let next_precedence = Precedence::from_token(&self.peek().kind);
+
+            let should_parse = if next_precedence.is_right_associative() {
+                precedence <= next_precedence
+            } else {
+                precedence < next_precedence
+            };
+
+            if !should_parse {
+                break;
+            }
+
             left = self.parse_infix(left)?;
         }
 
@@ -589,13 +599,16 @@ impl Parser {
             _ => unreachable!("expected binary operator"),
         };
 
+        let start = left.span().start;
+        let end = right.span().end;
+
         Ok(Expression::Binary {
             left: Box::new(left),
             operator,
             right: Box::new(right),
             span: Span {
-                start: left.span().start,
-                end: right.span().end,
+                start,
+                end,
             },
         })
     }
@@ -624,13 +637,16 @@ impl Parser {
 
         let value = self.parse_expression(Precedence::Assignment)?;
 
+        let start = target.span().start;
+        let end = value.span().end;
+
         Ok(Expression::Assignment {
             target: Box::new(target),
             operator,
             value: Box::new(value),
             span: Span {
-                start: target.span().start,
-                end: value.span().end,
+                start,
+                end,
             },
         })
     }
@@ -646,6 +662,8 @@ impl Parser {
 
         let arguments = self.parse_argument_list()?;
 
+        let start = callee.span().start;
+
         let end = self.consume(
             TokenKind::RightParen,
             "expected ')' after arguments",
@@ -655,7 +673,7 @@ impl Parser {
             callee: Box::new(callee),
             arguments,
             span: Span {
-                start: callee.span().start,
+                start,
                 end,
             },
         })
@@ -670,12 +688,15 @@ impl Parser {
         let (member_token, member) =
             self.consume_identifier(Some("expected member name after '.'"))?;
 
+        let start = object.span().start;
+        let end = member_token.span.end;
+
         Ok(Expression::Member {
             object: Box::new(object),
             member,
             span: Span {
-                start: object.span().start,
-                end: member_token.span.end,
+                start,
+                end,
             },
         })
     }
@@ -691,6 +712,8 @@ impl Parser {
 
         let index = self.parse_expression(Precedence::Lowest)?;
 
+        let start = object.span().start;
+
         let end = self.consume(
             TokenKind::RightBracket,
             "expected ']' after index expression",
@@ -700,7 +723,7 @@ impl Parser {
             object: Box::new(object),
             index: Box::new(index),
             span: Span {
-                start: object.span().start,
+                start,
                 end,
             },
         })
@@ -989,12 +1012,15 @@ impl Parser {
 
         let type_ = self.parse_type()?;
 
+        let start = name_token.span.start;
+        let end = type_.span().end;
+
         Ok(Parameter {
             name,
             type_,
             span: Span {
-                start: name_token.span.start,
-                end: type_.span().end,
+                start,
+                end,
             },
         })
     }
@@ -1019,7 +1045,7 @@ impl Parser {
         let mut fields = Vec::new();
 
         while !self.check(TokenKind::RightBrace) {
-            if self.check(TokenKind::Eof) {
+            if self.check(Eof) {
                 return Err(ParseError::new(
                     "expected '}' after struct fields",
                     self.peek().span,
@@ -1063,7 +1089,7 @@ impl Parser {
         let mut variants = Vec::new();
 
         while !self.check(TokenKind::RightBrace) {
-            if self.check(TokenKind::Eof) {
+            if self.check(Eof) {
                 return Err(ParseError::new(
                     "expected '}' after enum variants",
                     self.peek().span,
@@ -1144,9 +1170,10 @@ impl Parser {
     ) -> ParseResult<(Token, String)> {
         match &self.peek().kind {
             TokenKind::Identifier(name) => {
+                let name = name.clone();
                 let token = self.advance();
 
-                Ok((token, name.clone()))
+                Ok((token, name))
             }
 
             _ => Err(ParseError::new(
