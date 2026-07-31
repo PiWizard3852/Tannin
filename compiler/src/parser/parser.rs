@@ -35,6 +35,7 @@ impl Parser {
 
         return match current_token.kind {
             TokenKind::Pub => {
+                self.advance();
                 Ok(self.parse_declaration(true)?)
             }
 

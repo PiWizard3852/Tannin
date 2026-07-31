@@ -20,7 +20,7 @@ mod declarations {
     fn parses_function() {
         let program = parse(
             r#"
-            fn add(a: i32, b: i32) -> i32 {
+            pub fn add(a: i32, b: i32) -> i32 {
                 return a + b;
             }
             "#,
@@ -31,6 +31,7 @@ mod declarations {
         match &program.declarations[0] {
             Declaration::Function(function) => {
                 assert_eq!(function.name, "add");
+                assert_eq!(function.pub_, true);
                 assert_eq!(function.parameters.len(), 2);
                 assert!(function.return_type.is_some());
                 assert_eq!(function.body.statements.len(), 1);
@@ -53,6 +54,7 @@ mod declarations {
         match &program.declarations[0] {
             Declaration::Function(function) => {
                 assert_eq!(function.name, "hello");
+                assert_eq!(function.pub_, false);
                 assert!(function.parameters.is_empty());
                 assert!(function.return_type.is_none());
             }
