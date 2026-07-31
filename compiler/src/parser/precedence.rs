@@ -26,32 +26,6 @@ pub enum Precedence {
 }
 
 impl Precedence {
-    pub fn next(self) -> Self {
-        match self {
-            Precedence::Lowest => Precedence::Assignment,
-
-            Precedence::Assignment => Precedence::LogicalOr,
-
-            Precedence::LogicalOr => Precedence::LogicalAnd,
-            Precedence::LogicalAnd => Precedence::BitwiseOr,
-
-            Precedence::BitwiseOr => Precedence::BitwiseXor,
-            Precedence::BitwiseXor => Precedence::BitwiseAnd,
-            Precedence::BitwiseAnd => Precedence::Equality,
-
-            Precedence::Equality => Precedence::Comparison,
-            Precedence::Comparison => Precedence::Shift,
-
-            Precedence::Shift => Precedence::Addition,
-            Precedence::Addition => Precedence::Multiplication,
-
-            Precedence::Multiplication => Precedence::Unary,
-            Precedence::Unary => Precedence::Call,
-
-            Precedence::Call => Precedence::Call,
-        }
-    }
-
     pub fn is_right_associative(self) -> bool {
         matches!(self, Precedence::Assignment)
     }
