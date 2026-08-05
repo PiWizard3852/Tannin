@@ -160,6 +160,41 @@ fn lexes_assignment_operators() {
 }
 
 #[test]
+fn lexes_shift_assignments() {
+    assert_eq!(
+        lex("<< <<= >> >>="),
+        vec![
+            TokenKind::LessLess,
+            TokenKind::LessLessEqual,
+            TokenKind::GreaterGreater,
+            TokenKind::GreaterGreaterEqual,
+            TokenKind::Eof,
+        ]
+    );
+}
+
+#[test]
+fn reports_utf8_byte_spans() {
+    let source = "\"é\" x";
+    let tokens = Scanner::new(source).scan_tokens();
+
+    assert_eq!(&source[tokens[0].span.start..tokens[0].span.end], "\"é\"");
+    assert_eq!(&source[tokens[1].span.start..tokens[1].span.end], "x");
+    assert_eq!(tokens[2].span.start, source.len());
+    assert_eq!(tokens[2].span.end, source.len());
+}
+
+#[test]
+fn reports_unterminated_block_comment() {
+    let source = "/* é";
+    let error = Scanner::new(source).try_scan_tokens().unwrap_err();
+
+    assert_eq!(error.message, "unterminated block comment");
+    assert_eq!(error.span.start, 0);
+    assert_eq!(error.span.end, source.len());
+}
+
+#[test]
 fn lexes_increment_and_decrement() {
     assert_eq!(
         lex("++ --"),

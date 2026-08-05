@@ -1,23 +1,27 @@
 use crate::common::Span;
-use crate::lexer::{Token, TokenKind};
+use crate::lexer::{LexError, LexResult, Token, TokenKind};
 
-pub struct Scanner {
-    chars: Vec<char>,
+pub struct Scanner<'a> {
+    source: &'a str,
     position: usize,
 }
 
-impl<'a> Scanner {
+impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
-            chars: source.chars().collect(),
+            source,
             position: 0,
         }
     }
 
     pub fn scan_tokens(&mut self) -> Vec<Token> {
+        self.try_scan_tokens().unwrap_or_else(|error| panic!("{}", error.message))
+    }
+
+    pub fn try_scan_tokens(&mut self) -> LexResult<Vec<Token>> {
         let mut result = Vec::new();
 
-        while self.position <= self.chars.len() {
+        loop {
             let start = self.position;
             let current_char = self.advance();
 
@@ -106,15 +110,16 @@ impl<'a> Scanner {
                     if let Some('*') = next_char {
                         self.advance();
 
-                        while let Some(c) = self.peek() {
-                            self.advance();
-
-                            if c == '*' {
-                                if let Some('/') = self.peek() {
+                        loop {
+                            match self.advance() {
+                                Some('*') if self.peek() == Some('/') => {
                                     self.advance();
-
                                     break;
                                 }
+
+                                Some(_) => {}
+
+                                None => return Err(self.error("unterminated block comment", start)),
                             }
                         }
 
@@ -181,7 +186,7 @@ impl<'a> Scanner {
                     if let Some('<') = next_char {
                         self.advance();
 
-                        if let Some('=') = next_char {
+                        if let Some('=') = self.peek() {
                             self.advance();
 
                             result.push(Token::new(TokenKind::LessLessEqual, Span::new(start, self.position)));
@@ -207,7 +212,7 @@ impl<'a> Scanner {
                     if let Some('>') = next_char {
                         self.advance();
 
-                        if let Some('=') = next_char {
+                        if let Some('=') = self.peek() {
                             self.advance();
 
                             result.push(Token::new(TokenKind::GreaterGreaterEqual, Span::new(start, self.position)));
@@ -310,14 +315,15 @@ impl<'a> Scanner {
                 Some('[') => result.push(Token::new(TokenKind::LeftBracket, Span::new(start, self.position))),
                 Some(']') => result.push(Token::new(TokenKind::RightBracket, Span::new(start, self.position))),
 
-                Some('\'') => result.push(self.parse_char()),
-                Some('"') => result.push(self.parse_string()),
+                Some('\'') => result.push(self.parse_char()?),
+                Some('"') => result.push(self.parse_string()?),
 
-                None => result.push(Token::new(TokenKind::Eof, Span::new(start, start))),
+                None => {
+                    result.push(Token::new(TokenKind::Eof, Span::new(start, start)));
+                    break;
+                }
 
-                _ => {
-                    let unwrapped_char = current_char.unwrap();
-
+                Some(unwrapped_char) => {
                     if unwrapped_char.is_whitespace() {
                         continue;
                     }
@@ -327,62 +333,71 @@ impl<'a> Scanner {
                         continue;
                     }
 
-                    if unwrapped_char.is_numeric() {
+                    if unwrapped_char.is_ascii_digit() {
                         result.push(self.parse_numeric(unwrapped_char));
                         continue;
                     }
 
-                    panic!("Unexpected character '{}'", unwrapped_char);
+                    return Err(self.error(
+                        format!("unexpected character '{unwrapped_char}'"),
+                        start,
+                    ));
                 }
             }
         }
 
-        return result;
+        Ok(result)
     }
 
     fn peek(&self) -> Option<char> {
-        return match self.chars.get(self.position) {
-            None => None,
-            Some(c) => Some(*c)
-        };
+        self.source[self.position..].chars().next()
     }
 
     fn advance(&mut self) -> Option<char> {
-        let char = self.peek();
+        let char = self.peek()?;
 
-        self.position += 1;
+        self.position += char.len_utf8();
 
-        return char;
+        Some(char)
     }
 
-    fn parse_char(&mut self) -> Token {
-        let start = self.position - 1;
+    fn error(&self, message: impl Into<String>, start: usize) -> LexError {
+        LexError::new(message, Span::new(start, self.position))
+    }
 
-        let value = match self.advance() {
-            Some('\\') => match self.advance() {
-                Some('n') => '\n',
-                Some('r') => '\r',
-                Some('t') => '\t',
-                Some('\\') => '\\',
-                Some('"') => '"',
-                Some('\'') => '\'',
-                Some(c) => panic!("Invalid escape sequence: \\{}", c),
-                None => panic!("Unterminated character literal."),
-            },
-            Some(c) => c,
-            None => panic!("Unterminated character literal."),
-        };
-
+    fn parse_escape(&mut self, start: usize) -> LexResult<char> {
         match self.advance() {
-            Some('\'') => Token::new(
-                TokenKind::Char(value),
-                Span::new(start, self.position),
-            ),
-            _ => panic!("Character literals must contain exactly one character."),
+            Some('n') => Ok('\n'),
+            Some('r') => Ok('\r'),
+            Some('t') => Ok('\t'),
+            Some('\\') => Ok('\\'),
+            Some('"') => Ok('"'),
+            Some('\'') => Ok('\''),
+            Some(c) => Err(self.error(format!("invalid escape sequence: \\{c}"), start)),
+            None => Err(self.error("unterminated escape sequence", start)),
         }
     }
 
-    fn parse_string(&mut self) -> Token {
+    fn parse_char(&mut self) -> LexResult<Token> {
+        let start = self.position - 1;
+
+        let value = match self.advance() {
+            Some('\\') => self.parse_escape(start)?,
+            Some('\'') => return Err(self.error("empty character literal", start)),
+            Some(c) => c,
+            None => return Err(self.error("unterminated character literal", start)),
+        };
+
+        match self.advance() {
+            Some('\'') => Ok(Token::new(
+                TokenKind::Char(value),
+                Span::new(start, self.position),
+            )),
+            _ => Err(self.error("character literals must contain exactly one character", start)),
+        }
+    }
+
+    fn parse_string(&mut self) -> LexResult<Token> {
         let mut value = String::new();
         let start = self.position - 1;
 
@@ -390,27 +405,16 @@ impl<'a> Scanner {
             if next_char == '"' {
                 self.advance();
 
-                return Token::new(
+                return Ok(Token::new(
                     TokenKind::String(value),
                     Span::new(start, self.position),
-                );
+                ));
             }
 
             if next_char == '\\' {
                 self.advance();
 
-                let escaped = match self.advance() {
-                    Some('n') => '\n',
-                    Some('r') => '\r',
-                    Some('t') => '\t',
-                    Some('\\') => '\\',
-                    Some('"') => '"',
-                    Some('\'') => '\'',
-                    Some(c) => panic!("Invalid escape sequence: \\{}", c),
-                    None => panic!("Unterminated escape sequence."),
-                };
-
-                value.push(escaped);
+                value.push(self.parse_escape(start)?);
                 continue;
             }
 
@@ -418,7 +422,7 @@ impl<'a> Scanner {
             self.advance();
         }
 
-        panic!("Unterminated string literal.");
+        Err(self.error("unterminated string literal", start))
     }
 
     fn parse_identifier(&mut self, first_char: char) -> Token {
@@ -476,7 +480,7 @@ impl<'a> Scanner {
         let start = self.position - 1;
 
         while let Some(next_char) = self.peek() {
-            if !(next_char.is_numeric() || next_char == '_' || (!value.contains('.') && next_char == '.')) {
+            if !(next_char.is_ascii_digit() || next_char == '_' || (!value.contains('.') && next_char == '.')) {
                 return if value.contains('.') {
                     Token::new(
                         TokenKind::Float(value),
