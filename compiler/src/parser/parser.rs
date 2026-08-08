@@ -192,30 +192,6 @@ impl Parser {
     // Statements
     // ======================================================
 
-    fn parse_statement(&mut self) -> ParseResult<Statement> {
-        match self.peek().kind {
-            TokenKind::LeftBrace => {
-                Ok(Statement::Block(self.parse_block()?))
-            }
-
-            TokenKind::Let => {
-                self.parse_let_statement()
-            }
-
-            TokenKind::While => {
-                self.parse_while_statement()
-            }
-
-            TokenKind::Return => {
-                self.parse_return_statement()
-            }
-
-            _ => {
-                self.parse_expression_statement()
-            }
-        }
-    }
-
     fn parse_block(&mut self) -> ParseResult<Block> {
         let start = self.consume(
             TokenKind::LeftBrace,
@@ -223,6 +199,7 @@ impl Parser {
         )?.span.start;
 
         let mut statements = Vec::new();
+        let mut tail = None;
 
         while !self.check(TokenKind::RightBrace) {
             if self.check(Eof) {
@@ -232,7 +209,28 @@ impl Parser {
                 ));
             }
 
-            statements.push(self.parse_statement()?);
+            let statement = match self.peek().kind {
+                TokenKind::Let => self.parse_let_statement()?,
+                TokenKind::While => self.parse_while_statement()?,
+                TokenKind::Return => self.parse_return_statement()?,
+                _ => match self.parse_expression(Precedence::Lowest)? {
+                    Expression::Block(block)
+                        if !self.check(TokenKind::Semicolon)
+                            && (!self.check(TokenKind::RightBrace) || block.tail.is_none()) =>
+                    {
+                        Statement::Block(block)
+                    }
+
+                    expression if self.check(TokenKind::RightBrace) => {
+                        tail = Some(Box::new(expression));
+                        break;
+                    }
+
+                    expression => self.parse_expression_statement(expression)?,
+                },
+            };
+
+            statements.push(statement);
         }
 
         let end = self.consume(
@@ -242,6 +240,7 @@ impl Parser {
 
         Ok(Block {
             statements,
+            tail,
             span: Span {
                 start,
                 end,
@@ -338,9 +337,7 @@ impl Parser {
         })
     }
 
-    fn parse_expression_statement(&mut self) -> ParseResult<Statement> {
-        let expression = self.parse_expression(Precedence::Lowest)?;
-
+    fn parse_expression_statement(&mut self, expression: Expression) -> ParseResult<Statement> {
         let start = expression.span().start;
 
         let end = self.consume(

@@ -650,6 +650,41 @@ mod statements {
     use super::*;
 
     #[test]
+    fn parses_block_values() {
+        let program = parse(
+            r#"
+            fn value() -> i32 {
+                if true { 42 } else { 0 }
+            }
+
+            fn discard() {
+                42;
+            }
+            "#,
+        );
+
+        let Declaration::Function(value) = &program.declarations[0] else {
+            panic!("expected function");
+        };
+
+        let Some(Expression::If { then_branch, .. }) = value.body.tail.as_deref() else {
+            panic!("expected if expression at end of block");
+        };
+
+        assert!(matches!(
+            &**then_branch,
+            Expression::Block(Block { tail: Some(_), .. })
+        ));
+
+        let Declaration::Function(discard) = &program.declarations[1] else {
+            panic!("expected function");
+        };
+
+        assert_eq!(discard.body.statements.len(), 1);
+        assert!(discard.body.tail.is_none());
+    }
+
+    #[test]
     fn parses_let_with_initializer() {
         let program = parse(
             r#"

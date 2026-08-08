@@ -71,6 +71,7 @@ pub struct EnumVariant {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub statements: Vec<Statement>,
+    pub tail: Option<Box<Expression>>,
     pub span: Span,
 }
 
