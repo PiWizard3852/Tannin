@@ -1,3 +1,4 @@
+use crate::analyzer::types::ValueType;
 use crate::common::Span;
 
 #[derive(Debug, Clone)]
@@ -19,6 +20,8 @@ pub enum Symbol {
     },
 
     Variable {
+        index: usize,
+        type_: ValueType,
         mutable: bool,
         span: Span,
     },
