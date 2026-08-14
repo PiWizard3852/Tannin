@@ -1,6 +1,6 @@
 use crate::analyzer::types::{FunctionType, ValueType};
 use crate::common::Span;
-use crate::parser::ast::{BinaryOperator, UnaryOperator};
+use crate::parser::ast::{AssignmentOperator, BinaryOperator, UnaryOperator};
 
 #[derive(Debug)]
 pub struct CheckedProgram {
@@ -48,6 +48,11 @@ pub(crate) enum CheckedStatement {
         initializer: CheckedExpression,
     },
 
+    While {
+        condition: CheckedExpression,
+        body: CheckedBlock,
+    },
+
     Return(Option<CheckedExpression>),
     Expression(CheckedExpression),
 }
@@ -58,7 +63,7 @@ impl CheckedStatement {
             Self::Block(block) => block.flow == Flow::Returns,
             Self::Return(_) => true,
             Self::Expression(expression) => expression.flow == Flow::Returns,
-            Self::Let { .. } => false,
+            Self::Let { .. } | Self::While { .. } => false,
         }
     }
 }
@@ -109,5 +114,17 @@ pub(crate) enum ExpressionKind {
         left: Box<CheckedExpression>,
         operator: BinaryOperator,
         right: Box<CheckedExpression>,
+    },
+
+    Assignment {
+        target: Box<CheckedExpression>,
+        operator: AssignmentOperator,
+        value: Box<CheckedExpression>,
+    },
+
+    If {
+        condition: Box<CheckedExpression>,
+        then_branch: Box<CheckedExpression>,
+        else_branch: Option<Box<CheckedExpression>>,
     },
 }

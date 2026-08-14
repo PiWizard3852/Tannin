@@ -53,3 +53,40 @@ fn rejects_invalid_function_bodies() {
         assert_eq!(analyze_error(source).message, message);
     }
 }
+
+#[test]
+fn checks_updates_and_returning_branches() {
+    let program = parse(
+        r#"
+        fn f(flag: bool) -> i32 {
+            let mut n: i32 = 10;
+            n <<= 1;
+
+            while n > 0 {
+                n--;
+            }
+
+            if flag { return 1; } else { ++n }
+        }
+
+        fn g(flag: bool) -> i32 {
+            if flag { return 2; } else { return 3; };
+        }
+        "#,
+    );
+
+    Analyzer::analyze(&program).expect("analysis failed");
+}
+
+#[test]
+fn rejects_invalid_updates_and_control_flow() {
+    for (source, message) in [
+        ("fn f() { let n = 1; n++; }", "cannot assign to immutable binding 'n'"),
+        ("fn f() { 1 += 2; }", "expected an assignment target"),
+        ("fn f() { while 1 {} }", "expected bool, found isize"),
+        ("fn f(x: bool) -> i32 { if x { return 1; }; }", "missing return value"),
+        ("fn f() { let n = if true { 1 }; }", "branches must produce the same type"),
+    ] {
+        assert_eq!(analyze_error(source).message, message);
+    }
+}

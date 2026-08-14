@@ -238,6 +238,13 @@ impl Analyzer {
                 Ok(CheckedStatement::Let { index, initializer })
             }
 
+            Statement::While { condition, body, .. } => {
+                let condition = self.check_value(condition, Some(&ValueType::Bool))?;
+                let body = self.check_block(body, None)?;
+
+                Ok(CheckedStatement::While { condition, body })
+            }
+
             Statement::Return { value, span } => {
                 let return_type = self.return_type.clone();
                 let value = match (value, return_type.as_ref()) {
@@ -256,7 +263,6 @@ impl Analyzer {
                 Ok(CheckedStatement::Expression(self.check_expression(expression, None)?))
             }
 
-            Statement::While { span, .. } => Err(AnalyzeError::new("unsupported while statement", *span)),
         }
     }
 
@@ -315,6 +321,12 @@ impl Analyzer {
             }
             Expression::Binary { left, operator, right, .. } => {
                 self.check_binary(left, *operator, right, expected, span)?
+            }
+            Expression::Assignment { target, operator, value, .. } => {
+                self.check_assignment(target, *operator, value, span)?
+            }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                self.check_if(condition, then_branch, else_branch.as_deref(), expected, span)?
             }
             Expression::Block(block) => {
                 let block = self.check_block(block, expected)?;
@@ -446,13 +458,22 @@ impl Analyzer {
             }
         }
 
-        let operand = self.check_value(operand, expected)?;
+        let update = matches!(operator,
+            UnaryOperator::PreIncrement | UnaryOperator::PreDecrement
+                | UnaryOperator::PostIncrement | UnaryOperator::PostDecrement
+        );
+        let operand = if update {
+            self.check_target(operand)?
+        } else {
+            self.check_value(operand, expected)?
+        };
         let type_ = operand.value_type().clone();
         let valid = match operator {
             UnaryOperator::Negate => matches!(type_, ValueType::Integer { signed: true, .. } | ValueType::Float(_)),
             UnaryOperator::Not => type_ == ValueType::Bool,
             UnaryOperator::BitwiseNot => type_.is_integer(),
-            _ => false,
+            UnaryOperator::PreIncrement | UnaryOperator::PreDecrement
+                | UnaryOperator::PostIncrement | UnaryOperator::PostDecrement => type_.is_numeric(),
         };
 
         if !valid {
@@ -525,7 +546,103 @@ impl Analyzer {
             {
                 Self::untyped_numeric(left) && Self::untyped_numeric(right)
             }
+            Expression::Block(block) => block.tail.as_deref().is_some_and(Self::untyped_numeric),
             _ => false,
+        }
+    }
+
+    fn check_target(&mut self, target: &Expression) -> AnalyzeResult<CheckedExpression> {
+        let Expression::Identifier { value: name, span } = target else {
+            return Err(AnalyzeError::new("expected an assignment target", target.span()));
+        };
+
+        match self.lookup(name) {
+            Some(Symbol::Variable { mutable: true, .. }) => self.check_value(target, None),
+            Some(Symbol::Variable { mutable: false, .. } | Symbol::Const { .. }) => {
+                Err(AnalyzeError::new(format!("cannot assign to immutable binding '{name}'"), *span))
+            }
+            Some(_) => Err(AnalyzeError::new(format!("'{name}' is not a variable"), *span)),
+            None => Err(AnalyzeError::new(format!("unknown name '{name}'"), *span)),
+        }
+    }
+
+    fn check_assignment(
+        &mut self,
+        target: &Expression,
+        operator: AssignmentOperator,
+        value: &Expression,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        use AssignmentOperator::*;
+
+        let target = self.check_target(target)?;
+        let type_ = target.value_type().clone();
+        let valid = match operator {
+            Assign => true,
+            AddAssign | SubAssign | MulAssign | DivAssign | ModAssign => type_.is_numeric(),
+            AndAssign | OrAssign | XorAssign | LeftShiftAssign | RightShiftAssign => type_.is_integer(),
+        };
+
+        if !valid {
+            return Err(AnalyzeError::new(format!("invalid assignment operator for {type_}"), span));
+        }
+
+        let value = self.check_value(value, Some(&type_))?;
+        let kind = ExpressionKind::Assignment {
+            target: Box::new(target),
+            operator,
+            value: Box::new(value),
+        };
+
+        Ok(CheckedExpression::new(kind, Flow::Value(type_), span))
+    }
+
+    fn check_if(
+        &mut self,
+        condition: &Expression,
+        then_branch: &Expression,
+        else_branch: Option<&Expression>,
+        expected: Option<&ValueType>,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        let condition = self.check_value(condition, Some(&ValueType::Bool))?;
+        let (then_branch, else_branch) = match else_branch {
+            Some(else_branch)
+                if expected.is_none() && Self::untyped_numeric(then_branch)
+                    && !Self::untyped_numeric(else_branch) =>
+            {
+                let else_branch = self.check_expression(else_branch, None)?;
+                let then_branch = self.check_expression(then_branch, else_branch.flow.value())?;
+                (then_branch, Some(else_branch))
+            }
+
+            _ => {
+                let then_branch = self.check_expression(then_branch, expected)?;
+                let else_branch = else_branch.map(|branch| {
+                    self.check_expression(branch, expected.or_else(|| then_branch.flow.value()))
+                }).transpose()?;
+                (then_branch, else_branch)
+            }
+        };
+        let flow = Self::merge_flows(
+            &then_branch.flow,
+            else_branch.as_ref().map_or(&Flow::NoValue, |branch| &branch.flow),
+            span,
+        )?;
+        let kind = ExpressionKind::If {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_branch),
+            else_branch: else_branch.map(Box::new),
+        };
+
+        Ok(CheckedExpression::new(kind, flow, span))
+    }
+
+    fn merge_flows(left: &Flow, right: &Flow, span: Span) -> AnalyzeResult<Flow> {
+        match (left, right) {
+            (Flow::Returns, flow) | (flow, Flow::Returns) => Ok(flow.clone()),
+            (left, right) if left == right => Ok(left.clone()),
+            _ => Err(AnalyzeError::new("branches must produce the same type", span)),
         }
     }
 }
