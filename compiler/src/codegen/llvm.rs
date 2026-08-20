@@ -40,6 +40,7 @@ struct Emitter {
     next_string: usize,
     next_value: usize,
     next_label: usize,
+    current_block: String,
     terminated: bool,
     needs_trap: bool,
     needs_string_equal: bool,
@@ -169,9 +170,7 @@ impl Emitter {
                 self.emit_expression(expression)?;
             }
 
-            CheckedStatement::While { .. } => {
-                return Err(CodegenError::new("while lowering is unavailable", None));
-            }
+            CheckedStatement::While { condition, body } => self.emit_while(condition, body)?,
         }
 
         Ok(())
@@ -197,7 +196,7 @@ impl Emitter {
             ExpressionKind::Unary { operator, operand } => self.emit_unary(*operator, operand)?,
             ExpressionKind::Binary { left, operator, right } => {
                 if matches!(operator, BinaryOperator::LogicalAnd | BinaryOperator::LogicalOr) {
-                    return Err(CodegenError::new("short-circuit lowering is unavailable", Some(expression.span)));
+                    return self.emit_logical(left, *operator, right).map(Some);
                 }
 
                 let left_value = self.emit_value(left)?;
@@ -207,12 +206,118 @@ impl Emitter {
             ExpressionKind::Assignment { target, operator, value } => {
                 self.emit_assignment(target, *operator, value)?
             }
-            ExpressionKind::If { .. } => {
-                return Err(CodegenError::new("if lowering is unavailable", Some(expression.span)));
+            ExpressionKind::If { condition, then_branch, else_branch } => {
+                return self.emit_if(
+                    condition,
+                    then_branch,
+                    else_branch.as_deref(),
+                    expression.flow.value(),
+                );
             }
         };
 
         Ok(Some(value))
+    }
+
+    fn emit_while(&mut self, condition: &CheckedExpression, body: &CheckedBlock) -> CodegenResult<()> {
+        let test = self.label();
+        let repeat = self.label();
+        let done = self.label();
+
+        self.branch(&test);
+        self.start_block(&test);
+        let condition = self.emit_value(condition)?;
+        self.branch_if(&condition, &repeat, &done);
+
+        self.start_block(&repeat);
+        self.emit_block(body)?;
+
+        if !self.terminated {
+            self.branch(&test);
+        }
+
+        self.start_block(&done);
+        Ok(())
+    }
+
+    fn emit_if(
+        &mut self,
+        condition: &CheckedExpression,
+        then_branch: &CheckedExpression,
+        else_branch: Option<&CheckedExpression>,
+        type_: Option<&ValueType>,
+    ) -> CodegenResult<Option<String>> {
+        let condition = self.emit_value(condition)?;
+        let then_label = self.label();
+        let else_label = self.label();
+        let end = self.label();
+        let mut incoming = Vec::new();
+        self.branch_if(&condition, &then_label, &else_label);
+
+        self.start_block(&then_label);
+        let then_value = self.emit_expression(then_branch)?;
+        self.connect(&end, then_value, &mut incoming);
+
+        self.start_block(&else_label);
+        let else_value = match else_branch {
+            Some(branch) => self.emit_expression(branch)?,
+            None => None,
+        };
+        self.connect(&end, else_value, &mut incoming);
+
+        Ok(self.join(&end, type_, incoming))
+    }
+
+    fn emit_logical(
+        &mut self,
+        left: &CheckedExpression,
+        operator: BinaryOperator,
+        right: &CheckedExpression,
+    ) -> CodegenResult<String> {
+        let value = self.emit_value(left)?;
+        let test_right = self.label();
+        let end = self.label();
+        let shortcut = operator == BinaryOperator::LogicalOr;
+        let mut incoming = vec![(Some(shortcut.to_string()), self.current_block.clone())];
+
+        if shortcut {
+            self.branch_if(&value, &end, &test_right);
+        } else {
+            self.branch_if(&value, &test_right, &end);
+        }
+
+        self.start_block(&test_right);
+        let value = self.emit_value(right)?;
+        self.connect(&end, Some(value), &mut incoming);
+
+        Ok(self.join(&end, Some(&ValueType::Bool), incoming).expect("logical result"))
+    }
+
+    fn connect(&mut self, end: &str, value: Option<String>, incoming: &mut Vec<(Option<String>, String)>) {
+        if !self.terminated {
+            incoming.push((value, self.current_block.clone()));
+            self.branch(end);
+        }
+    }
+
+    fn join(
+        &mut self,
+        end: &str,
+        type_: Option<&ValueType>,
+        incoming: Vec<(Option<String>, String)>,
+    ) -> Option<String> {
+        if incoming.is_empty() {
+            return None;
+        }
+
+        self.start_block(end);
+
+        let type_ = Self::type_(type_?);
+        let arguments = incoming.into_iter()
+            .map(|(value, label)| format!("[ {}, %{label} ]", value.expect("branch value")))
+            .collect::<Vec<_>>().join(", ");
+
+        Some(self.value(format_args!("phi {type_} {arguments}")))
     }
 
     fn emit_call(
@@ -485,7 +590,12 @@ impl Emitter {
 
     fn start_block(&mut self, label: &str) {
         writeln!(self.functions, "{label}:").unwrap();
+        self.current_block = label.to_owned();
         self.terminated = false;
+    }
+
+    fn branch(&mut self, label: &str) {
+        self.terminate(format_args!("br label %{label}"));
     }
 
     fn branch_if(&mut self, condition: &str, then_label: &str, else_label: &str) {

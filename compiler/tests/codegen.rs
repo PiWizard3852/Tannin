@@ -80,3 +80,35 @@ fn compiles_scalar_functions_and_updates() {
 
     assert_eq!(status.code(), Some(42));
 }
+
+#[test]
+fn compiles_branches_loops_and_short_circuiting() {
+    let status = compile_and_run(
+        r#"
+        fn main() -> i32 {
+            let mut n: i32 = 0;
+            let mut i: i32 = 6;
+            while i > 0 {
+                n += i--;
+            }
+
+            if false && fail() { return 1; };
+            if true || fail() { return twice(n); };
+            return 0;
+        }
+
+        fn twice(n: i32) -> i32 {
+            if n == 0 { return 0; } else {
+                if n > 20 { n + n } else { n * 2 }
+            }
+        }
+
+        fn fail() -> bool {
+            let zero: i32 = 0;
+            1 / zero == 0
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}
