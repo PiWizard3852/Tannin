@@ -90,3 +90,20 @@ fn rejects_invalid_updates_and_control_flow() {
         assert_eq!(analyze_error(source).message, message);
     }
 }
+
+#[test]
+fn checks_named_struct_fields_and_mutability() {
+    for (source, message) in [
+        ("struct Point { x: i32, } fn f() { Point {}; }", "missing initializer for 'x'"),
+        (
+            "struct A { x: i32, } struct B { x: i32, } fn f(a: A) -> B { a }",
+            "expected B, found A",
+        ),
+        (
+            "struct A { x: i32, } fn f(a: A) { a.x = 1; }",
+            "cannot assign to immutable binding 'a'",
+        ),
+    ] {
+        assert_eq!(analyze_error(source).message, message);
+    }
+}

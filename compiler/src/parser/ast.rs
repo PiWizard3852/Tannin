@@ -63,6 +63,13 @@ pub struct Field {
 }
 
 #[derive(Debug, Clone)]
+pub struct FieldInitializer {
+    pub name: String,
+    pub value: Expression,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
 pub struct EnumVariant {
     pub name: String,
     pub span: Span,
@@ -151,6 +158,12 @@ pub enum Expression {
     Index {
         object: Box<Expression>,
         index: Box<Expression>,
+        span: Span,
+    },
+
+    Struct {
+        name: String,
+        fields: Vec<FieldInitializer>,
         span: Span,
     },
 
@@ -284,6 +297,7 @@ impl Expression {
             Expression::Call { span, .. } => *span,
             Expression::Member { span, .. } => *span,
             Expression::Index { span, .. } => *span,
+            Expression::Struct { span, .. } => *span,
             Expression::Match { span, .. } => *span,
             Expression::If { span, .. } => *span,
             Expression::Block(block) => block.span,

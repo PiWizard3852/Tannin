@@ -8,6 +8,7 @@ pub enum Symbol {
     },
 
     Struct {
+        index: usize,
         span: Span,
     },
 

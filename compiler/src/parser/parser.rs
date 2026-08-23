@@ -10,6 +10,7 @@ use crate::parser::precedence::Precedence;
 pub struct Parser {
     tokens: Vec<Token>,
     position: usize,
+    allow_struct_literal: bool,
 }
 
 impl Parser {
@@ -17,6 +18,7 @@ impl Parser {
         Self {
             tokens,
             position: 0,
+            allow_struct_literal: true,
         }
     }
 
@@ -213,7 +215,7 @@ impl Parser {
                 TokenKind::Let => self.parse_let_statement()?,
                 TokenKind::While => self.parse_while_statement()?,
                 TokenKind::Return => self.parse_return_statement()?,
-                _ => match self.parse_expression(Precedence::Lowest)? {
+                _ => match self.parse_expression_with_struct_literal(true)? {
                     Expression::Block(block)
                         if !self.check(TokenKind::Semicolon)
                             && (!self.check(TokenKind::RightBrace) || block.tail.is_none()) =>
@@ -267,7 +269,7 @@ impl Parser {
         };
 
         let initializer = if self.matches(TokenKind::Equal) {
-            Some(self.parse_expression(Precedence::Lowest)?)
+            Some(self.parse_expression_with_struct_literal(true)?)
         } else {
             None
         };
@@ -295,7 +297,7 @@ impl Parser {
             "expected 'while'",
         )?.span.start;
 
-        let condition = self.parse_expression(Precedence::Lowest)?;
+        let condition = self.parse_expression_with_struct_literal(false)?;
 
         let body = self.parse_block()?;
 
@@ -320,7 +322,7 @@ impl Parser {
         let value = if self.check(TokenKind::Semicolon) {
             None
         } else {
-            Some(self.parse_expression(Precedence::Lowest)?)
+            Some(self.parse_expression_with_struct_literal(true)?)
         };
 
         let end = self.consume(
@@ -357,6 +359,14 @@ impl Parser {
     // ======================================================
     // Expressions
     // ======================================================
+
+    fn parse_expression_with_struct_literal(&mut self, allow: bool) -> ParseResult<Expression> {
+        let previous = std::mem::replace(&mut self.allow_struct_literal, allow);
+        let expression = self.parse_expression(Precedence::Lowest);
+        self.allow_struct_literal = previous;
+
+        expression
+    }
 
     fn parse_expression(
         &mut self,
@@ -475,6 +485,10 @@ impl Parser {
             TokenKind::Identifier(name) => {
                 self.advance();
 
+                if self.allow_struct_literal && self.check(TokenKind::LeftBrace) {
+                    return self.parse_struct_literal(name, token.span.start);
+                }
+
                 Ok(Expression::Identifier {
                     value: name,
                     span: token.span,
@@ -483,7 +497,7 @@ impl Parser {
             TokenKind::LeftParen => {
                 self.advance();
 
-                let expression = self.parse_expression(Precedence::Lowest)?;
+                let expression = self.parse_expression_with_struct_literal(true)?;
 
                 self.consume(
                     TokenKind::RightParen,
@@ -500,6 +514,28 @@ impl Parser {
                 token.span,
             )),
         }
+    }
+
+    fn parse_struct_literal(&mut self, name: String, start: usize) -> ParseResult<Expression> {
+        self.advance();
+        let mut fields = Vec::new();
+
+        while !self.check(TokenKind::RightBrace) {
+            let (field, name) = self.consume_identifier(Some("expected field name"))?;
+            self.consume(TokenKind::Colon, "expected ':' after field name")?;
+            let value = self.parse_expression(Precedence::Lowest)?;
+            let comma = self.consume(TokenKind::Comma, "expected ',' after field initializer")?;
+
+            fields.push(FieldInitializer {
+                name,
+                value,
+                span: Span::new(field.span.start, comma.span.end),
+            });
+        }
+
+        let end = self.advance().span.end;
+
+        Ok(Expression::Struct { name, fields, span: Span::new(start, end) })
     }
 
     fn parse_infix(
@@ -708,7 +744,7 @@ impl Parser {
             "expected '['",
         )?;
 
-        let index = self.parse_expression(Precedence::Lowest)?;
+        let index = self.parse_expression_with_struct_literal(true)?;
 
         let start = object.span().start;
 
@@ -771,7 +807,7 @@ impl Parser {
             "expected 'if'",
         )?.span.start;
 
-        let condition = self.parse_expression(Precedence::Lowest)?;
+        let condition = self.parse_expression_with_struct_literal(false)?;
 
         let then_branch = Box::new(
             Expression::Block(self.parse_block()?)
@@ -811,7 +847,7 @@ impl Parser {
             "expected 'match'",
         )?.span.start;
 
-        let expression = self.parse_expression(Precedence::Lowest)?;
+        let expression = self.parse_expression_with_struct_literal(false)?;
 
         self.consume(
             TokenKind::LeftBrace,
@@ -849,7 +885,7 @@ impl Parser {
             "expected '=>' after pattern",
         )?;
 
-        let value = self.parse_expression(Precedence::Lowest)?;
+        let value = self.parse_expression_with_struct_literal(true)?;
 
         let end = self.consume(
             TokenKind::Comma,
@@ -1033,7 +1069,7 @@ impl Parser {
         arguments.push(self.parse_expression(Precedence::Lowest)?);
 
         while self.matches(TokenKind::Comma) {
-            arguments.push(self.parse_expression(Precedence::Lowest)?);
+            arguments.push(self.parse_expression_with_struct_literal(true)?);
         }
 
         Ok(arguments)

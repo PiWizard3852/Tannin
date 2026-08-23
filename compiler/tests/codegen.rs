@@ -112,3 +112,37 @@ fn compiles_branches_loops_and_short_circuiting() {
 
     assert_eq!(status.code(), Some(42));
 }
+
+#[test]
+fn compiles_struct_construction_and_shared_fields() {
+    let status = compile_and_run(
+        r#"
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        struct Pair {
+            item: Point,
+        }
+
+        fn make_pair(x: i32) -> Pair {
+            let mut n = x;
+            Pair { item: Point { y: n++, x: ++n, }, }
+        }
+
+        fn main() -> i32 {
+            let mut p = make_pair(18);
+            let alias = p;
+            p.item.x += 4;
+            if alias.item.x == 24 {
+                make_pair(18).item.y + 24
+            } else {
+                0
+            }
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}

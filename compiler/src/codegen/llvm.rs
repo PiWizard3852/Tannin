@@ -22,6 +22,10 @@ pub type CodegenResult<T> = Result<T, CodegenError>;
 pub fn emit_llvm(program: &CheckedProgram) -> CodegenResult<String> {
     let mut emitter = Emitter::default();
 
+    for struct_ in &program.structs {
+        emitter.emit_struct_type(struct_);
+    }
+
     for function in &program.functions {
         emitter.emit_function(function)?;
     }
@@ -43,6 +47,7 @@ struct Emitter {
     current_block: String,
     terminated: bool,
     needs_trap: bool,
+    needs_malloc: bool,
     needs_string_equal: bool,
 }
 
@@ -52,6 +57,10 @@ impl Emitter {
 
         if self.needs_trap {
             output.push_str("declare void @llvm.trap()\n\n");
+        }
+
+        if self.needs_malloc {
+            writeln!(output, "declare ptr @malloc({})\n", Self::size_type()).unwrap();
         }
 
         if self.needs_string_equal {
@@ -107,6 +116,13 @@ impl Emitter {
         self.functions.push_str("}\n\n");
 
         Ok(())
+    }
+
+    fn emit_struct_type(&mut self, struct_: &CheckedStruct) {
+        let fields = struct_.fields.iter().map(|(_, type_)| Self::type_(type_))
+            .collect::<Vec<_>>().join(", ");
+
+        writeln!(self.globals, "%tannin.struct.{} = type {{ {fields} }}", struct_.name).unwrap();
     }
 
     fn emit_entry(&mut self, main: &CheckedFunction) -> CodegenResult<()> {
@@ -185,7 +201,7 @@ impl Emitter {
     fn emit_expression(&mut self, expression: &CheckedExpression) -> CodegenResult<Option<String>> {
         let value = match &expression.kind {
             ExpressionKind::Literal(value) => self.literal(value),
-            ExpressionKind::Local(_) => {
+            ExpressionKind::Local(_) | ExpressionKind::Member { .. } => {
                 let address = self.emit_place(expression)?;
                 self.load(expression.value_type(), &address)
             }
@@ -214,6 +230,7 @@ impl Emitter {
                     expression.flow.value(),
                 );
             }
+            ExpressionKind::Struct { name, fields } => self.emit_struct(name, fields)?,
         };
 
         Ok(Some(value))
@@ -346,10 +363,52 @@ impl Emitter {
     }
 
     fn emit_place(&mut self, expression: &CheckedExpression) -> CodegenResult<String> {
-        match expression.kind {
+        match &expression.kind {
             ExpressionKind::Local(index) => Ok(format!("%local.{index}")),
+            ExpressionKind::Member { object, index } => {
+                let ValueType::Struct(name) = object.value_type() else {
+                    unreachable!("checked field access");
+                };
+                let object = self.emit_value(object)?;
+
+                Ok(self.field_address(name, &object, *index))
+            }
             _ => Err(CodegenError::new("expected a storage location", Some(expression.span))),
         }
+    }
+
+    fn emit_struct(
+        &mut self,
+        name: &str,
+        fields: &[(usize, CheckedExpression)],
+    ) -> CodegenResult<String> {
+        let object = self.allocate(&format!("%tannin.struct.{name}"));
+
+        for (index, field) in fields {
+            let value = self.emit_value(field)?;
+            let address = self.field_address(name, &object, *index);
+            self.store(field.value_type(), &value, &address);
+        }
+
+        Ok(object)
+    }
+
+    fn field_address(&mut self, name: &str, object: &str, index: usize) -> String {
+        self.value(format_args!("getelementptr %tannin.struct.{name}, ptr {object}, i32 0, i32 {index}"))
+    }
+
+    fn allocate(&mut self, layout: &str) -> String {
+        self.needs_malloc = true;
+        let size = Self::size_type();
+        let end = self.value(format_args!("getelementptr {layout}, ptr null, i32 1"));
+        let bytes = self.value(format_args!("ptrtoint ptr {end} to {size}"));
+        let empty = self.value(format_args!("icmp eq {size} {bytes}, 0"));
+        let bytes = self.value(format_args!("select i1 {empty}, {size} 1, {size} {bytes}"));
+        let object = self.value(format_args!("call ptr @malloc({size} {bytes})"));
+        let failed = self.value(format_args!("icmp eq ptr {object}, null"));
+        self.trap_if(&failed);
+
+        object
     }
 
     fn emit_assignment(
@@ -543,7 +602,7 @@ impl Emitter {
             ValueType::Float(_) => "double".to_owned(),
             ValueType::Bool => "i1".to_owned(),
             ValueType::Char => "i32".to_owned(),
-            ValueType::String => "ptr".to_owned(),
+            ValueType::String | ValueType::Struct(_) => "ptr".to_owned(),
         }
     }
 

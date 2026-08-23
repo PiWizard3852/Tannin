@@ -22,6 +22,7 @@ pub(crate) enum ValueType {
     Bool,
     Char,
     String,
+    Struct(String),
 }
 
 impl ValueType {
@@ -78,6 +79,7 @@ impl fmt::Display for ValueType {
             Self::Bool => write!(f, "bool"),
             Self::Char => write!(f, "char"),
             Self::String => write!(f, "string"),
+            Self::Struct(name) => write!(f, "{name}"),
         }
     }
 }

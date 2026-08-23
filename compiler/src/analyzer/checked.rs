@@ -5,6 +5,13 @@ use crate::parser::ast::{AssignmentOperator, BinaryOperator, UnaryOperator};
 #[derive(Debug)]
 pub struct CheckedProgram {
     pub(crate) functions: Vec<CheckedFunction>,
+    pub(crate) structs: Vec<CheckedStruct>,
+}
+
+#[derive(Debug)]
+pub(crate) struct CheckedStruct {
+    pub name: String,
+    pub fields: Vec<(String, ValueType)>,
 }
 
 #[derive(Debug)]
@@ -126,5 +133,15 @@ pub(crate) enum ExpressionKind {
         condition: Box<CheckedExpression>,
         then_branch: Box<CheckedExpression>,
         else_branch: Option<Box<CheckedExpression>>,
+    },
+
+    Struct {
+        name: String,
+        fields: Vec<(usize, CheckedExpression)>,
+    },
+
+    Member {
+        object: Box<CheckedExpression>,
+        index: usize,
     },
 }

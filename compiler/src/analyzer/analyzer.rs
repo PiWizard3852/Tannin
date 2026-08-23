@@ -13,6 +13,7 @@ pub struct Analyzer {
     scopes: Vec<Scope>,
     signatures: HashMap<String, FunctionType>,
     constants: HashMap<String, (CheckedLiteral, ValueType)>,
+    structs: Vec<CheckedStruct>,
     locals: Vec<ValueType>,
     return_type: Option<ValueType>,
 }
@@ -24,11 +25,13 @@ impl Analyzer {
             scopes: Vec::new(),
             signatures: HashMap::new(),
             constants: HashMap::new(),
+            structs: Vec::new(),
             locals: Vec::new(),
             return_type: None,
         };
 
         analyzer.collect_declarations(program)?;
+        analyzer.collect_structs(program)?;
         analyzer.collect_signatures(program)?;
         analyzer.collect_constants(program)?;
 
@@ -40,7 +43,7 @@ impl Analyzer {
             }
         }
 
-        Ok(CheckedProgram { functions })
+        Ok(CheckedProgram { functions, structs: analyzer.structs })
     }
 
     fn collect_declarations(&mut self, program: &Program) -> AnalyzeResult<()> {
@@ -52,11 +55,22 @@ impl Analyzer {
                     Symbol::Function { span: function.span },
                 ),
 
-                Declaration::Struct(struct_) => (
-                    &struct_.name,
-                    struct_.span,
-                    Symbol::Struct { span: struct_.span },
-                ),
+                Declaration::Struct(struct_) => {
+                    if ValueType::named(&struct_.name).is_some() {
+                        return Err(AnalyzeError::new(
+                            format!("'{}' is a built-in type", struct_.name),
+                            struct_.span,
+                        ));
+                    }
+
+                    let index = self.structs.len();
+                    self.structs.push(CheckedStruct {
+                        name: struct_.name.clone(),
+                        fields: Vec::new(),
+                    });
+
+                    (&struct_.name, struct_.span, Symbol::Struct { index, span: struct_.span })
+                }
 
                 Declaration::Enum(enum_) => (
                     &enum_.name,
@@ -102,6 +116,32 @@ impl Analyzer {
         Ok(())
     }
 
+    fn collect_structs(&mut self, program: &Program) -> AnalyzeResult<()> {
+        for declaration in &program.declarations {
+            let Declaration::Struct(struct_) = declaration else {
+                continue;
+            };
+
+            let index = self.struct_index(&struct_.name, struct_.span)?;
+            let mut fields = Vec::new();
+
+            for field in &struct_.fields {
+                if fields.iter().any(|(name, _)| *name == field.name) {
+                    return Err(AnalyzeError::new(
+                        format!("duplicate field '{}'", field.name),
+                        field.span,
+                    ));
+                }
+
+                fields.push((field.name.clone(), self.resolve_type(&field.type_)?));
+            }
+
+            self.structs[index].fields = fields;
+        }
+
+        Ok(())
+    }
+
     fn collect_constants(&mut self, program: &Program) -> AnalyzeResult<()> {
         for declaration in &program.declarations {
             let Declaration::Const(const_) = declaration else {
@@ -138,9 +178,16 @@ impl Analyzer {
 
     fn resolve_type(&self, type_: &Type) -> AnalyzeResult<ValueType> {
         match type_ {
-            Type::Named { name, span } => ValueType::named(name).ok_or_else(|| {
-                AnalyzeError::new(format!("unknown type '{name}'"), *span)
-            }),
+            Type::Named { name, span } => {
+                if let Some(type_) = ValueType::named(name) {
+                    return Ok(type_);
+                }
+
+                match self.globals.lookup(name) {
+                    Some(Symbol::Struct { .. }) => Ok(ValueType::Struct(name.clone())),
+                    _ => Err(AnalyzeError::new(format!("unknown type '{name}'"), *span)),
+                }
+            }
             Type::Array { span, .. } => Err(AnalyzeError::new("unsupported type", *span)),
         }
     }
@@ -328,6 +375,8 @@ impl Analyzer {
             Expression::If { condition, then_branch, else_branch, .. } => {
                 self.check_if(condition, then_branch, else_branch.as_deref(), expected, span)?
             }
+            Expression::Struct { name, fields, .. } => self.check_struct(name, fields, span)?,
+            Expression::Member { object, member, .. } => self.check_member(object, member, span)?,
             Expression::Block(block) => {
                 let block = self.check_block(block, expected)?;
                 let flow = block.flow.clone();
@@ -518,7 +567,7 @@ impl Analyzer {
             Add | Subtract | Multiply | Divide | Modulo => type_.is_numeric(),
             BitwiseAnd | BitwiseOr | BitwiseXor | LeftShift | RightShift => type_.is_integer(),
             Less | LessEqual | Greater | GreaterEqual => type_.is_numeric() || *type_ == ValueType::Char,
-            Equal | NotEqual => true,
+            Equal | NotEqual => !matches!(type_, ValueType::Struct(_)),
             LogicalAnd | LogicalOr => *type_ == ValueType::Bool,
         };
 
@@ -552,7 +601,13 @@ impl Analyzer {
     }
 
     fn check_target(&mut self, target: &Expression) -> AnalyzeResult<CheckedExpression> {
-        let Expression::Identifier { value: name, span } = target else {
+        let mut root = target;
+
+        while let Expression::Member { object, .. } = root {
+            root = object;
+        }
+
+        let Expression::Identifier { value: name, span } = root else {
             return Err(AnalyzeError::new("expected an assignment target", target.span()));
         };
 
@@ -644,5 +699,70 @@ impl Analyzer {
             (left, right) if left == right => Ok(left.clone()),
             _ => Err(AnalyzeError::new("branches must produce the same type", span)),
         }
+    }
+
+    fn struct_index(&self, name: &str, span: Span) -> AnalyzeResult<usize> {
+        match self.globals.lookup(name) {
+            Some(Symbol::Struct { index, .. }) => Ok(*index),
+            _ => Err(AnalyzeError::new(format!("unknown struct '{name}'"), span)),
+        }
+    }
+
+    fn struct_field(&self, struct_: usize, name: &str, span: Span) -> AnalyzeResult<(usize, ValueType)> {
+        let struct_ = &self.structs[struct_];
+        struct_.fields.iter().enumerate()
+            .find(|(_, (field, _))| field == name)
+            .map(|(index, (_, type_))| (index, type_.clone()))
+            .ok_or_else(|| AnalyzeError::new(format!("'{}' has no field '{name}'", struct_.name), span))
+    }
+
+    fn check_struct(
+        &mut self,
+        name: &str,
+        fields: &[FieldInitializer],
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        let struct_ = self.struct_index(name, span)?;
+        let mut initialized = vec![false; self.structs[struct_].fields.len()];
+        let mut values = Vec::new();
+
+        for field in fields {
+            let (index, type_) = self.struct_field(struct_, &field.name, field.span)?;
+
+            if initialized[index] {
+                return Err(AnalyzeError::new(
+                    format!("duplicate initializer for '{}'", field.name),
+                    field.span,
+                ));
+            }
+
+            initialized[index] = true;
+            values.push((index, self.check_value(&field.value, Some(&type_))?));
+        }
+
+        if let Some(index) = initialized.iter().position(|&initialized| !initialized) {
+            let (field, _) = &self.structs[struct_].fields[index];
+            return Err(AnalyzeError::new(format!("missing initializer for '{field}'"), span));
+        }
+
+        let kind = ExpressionKind::Struct { name: name.to_owned(), fields: values };
+
+        Ok(CheckedExpression::new(kind, Flow::Value(ValueType::Struct(name.to_owned())), span))
+    }
+
+    fn check_member(
+        &mut self,
+        object: &Expression,
+        member: &str,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        let object = self.check_value(object, None)?;
+        let ValueType::Struct(name) = object.value_type() else {
+            return Err(AnalyzeError::new("field access requires a struct", span));
+        };
+        let (index, type_) = self.struct_field(self.struct_index(name, span)?, member, span)?;
+        let kind = ExpressionKind::Member { object: Box::new(object), index };
+
+        Ok(CheckedExpression::new(kind, Flow::Value(type_), span))
     }
 }

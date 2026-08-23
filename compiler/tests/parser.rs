@@ -904,6 +904,37 @@ mod statements {
     }
 }
 
+#[test]
+fn parses_struct_values_next_to_control_blocks() {
+    let program = parse(
+        r#"
+        struct Point { x: i32, }
+
+        fn main() -> i32 {
+            if (Point { x: 42, }).x == 42 {
+                Point { x: 42, }.x
+            } else {
+                0
+            }
+        }
+        "#,
+    );
+    let Declaration::Function(function) = &program.declarations[1] else {
+        panic!("expected function");
+    };
+    let Some(Expression::If { then_branch, .. }) = function.body.tail.as_deref() else {
+        panic!("expected if expression");
+    };
+    let Expression::Block(block) = &**then_branch else {
+        panic!("expected block");
+    };
+    let Some(Expression::Member { object, .. }) = block.tail.as_deref() else {
+        panic!("expected member access");
+    };
+
+    assert!(matches!(&**object, Expression::Struct { name, .. } if name == "Point"));
+}
+
 mod patterns {
     use super::*;
 
