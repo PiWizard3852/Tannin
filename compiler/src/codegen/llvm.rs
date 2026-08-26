@@ -201,7 +201,7 @@ impl Emitter {
     fn emit_expression(&mut self, expression: &CheckedExpression) -> CodegenResult<Option<String>> {
         let value = match &expression.kind {
             ExpressionKind::Literal(value) => self.literal(value),
-            ExpressionKind::Local(_) | ExpressionKind::Member { .. } => {
+            ExpressionKind::Local(_) | ExpressionKind::Member { .. } | ExpressionKind::Index { .. } => {
                 let address = self.emit_place(expression)?;
                 self.load(expression.value_type(), &address)
             }
@@ -231,6 +231,13 @@ impl Emitter {
                 );
             }
             ExpressionKind::Struct { name, fields } => self.emit_struct(name, fields)?,
+            ExpressionKind::Array(elements) => {
+                let ValueType::Array(element_type) = expression.value_type() else {
+                    unreachable!("checked array");
+                };
+
+                self.emit_array(element_type, elements)?
+            }
         };
 
         Ok(Some(value))
@@ -373,6 +380,7 @@ impl Emitter {
 
                 Ok(self.field_address(name, &object, *index))
             }
+            ExpressionKind::Index { object, index } => self.emit_index(object, index),
             _ => Err(CodegenError::new("expected a storage location", Some(expression.span))),
         }
     }
@@ -395,6 +403,76 @@ impl Emitter {
 
     fn field_address(&mut self, name: &str, object: &str, index: usize) -> String {
         self.value(format_args!("getelementptr %tannin.struct.{name}, ptr {object}, i32 0, i32 {index}"))
+    }
+
+    fn emit_array(
+        &mut self,
+        type_: &ValueType,
+        elements: &[CheckedExpression],
+    ) -> CodegenResult<String> {
+        let size = Self::size_type();
+        let element_type = Self::type_(type_);
+        let length = elements.len();
+        let array = self.allocate(&format!("{{ {size}, [{length} x {element_type}] }}"));
+        self.instruction(format_args!("store {size} {length}, ptr {array}"));
+
+        for (index, element) in elements.iter().enumerate() {
+            let value = self.emit_value(element)?;
+            let address = self.element_address(&element_type, &array, &index.to_string());
+            self.store(type_, &value, &address);
+        }
+
+        Ok(array)
+    }
+
+    fn emit_index(
+        &mut self,
+        object: &CheckedExpression,
+        index: &CheckedExpression,
+    ) -> CodegenResult<String> {
+        let ValueType::Array(element) = object.value_type() else {
+            unreachable!("checked index");
+        };
+        let ValueType::Integer { width, signed } = index.value_type() else {
+            unreachable!("checked index type");
+        };
+        let array = self.emit_value(object)?;
+        let index = self.emit_value(index)?;
+        let size = Self::size_type();
+        let bits = width.bits();
+        let index_type = format!("i{bits}");
+        let compare_type = format!("i{}", bits.max(usize::BITS));
+        let length = self.value(format_args!("load {size}, ptr {array}"));
+        let length = if bits > usize::BITS {
+            self.value(format_args!("zext {size} {length} to {compare_type}"))
+        } else {
+            length
+        };
+        let negative = signed.then(|| self.value(format_args!("icmp slt {index_type} {index}, 0")));
+        let index = if bits < usize::BITS {
+            self.value(format_args!("zext {index_type} {index} to {compare_type}"))
+        } else {
+            index
+        };
+        let outside = self.value(format_args!("icmp uge {compare_type} {index}, {length}"));
+        let invalid = match negative {
+            Some(negative) => self.value(format_args!("or i1 {negative}, {outside}")),
+            None => outside,
+        };
+        self.trap_if(&invalid);
+
+        let index = if bits > usize::BITS {
+            self.value(format_args!("trunc {compare_type} {index} to {size}"))
+        } else {
+            index
+        };
+
+        Ok(self.element_address(&Self::type_(element), &array, &index))
+    }
+
+    fn element_address(&mut self, type_: &str, array: &str, index: &str) -> String {
+        let size = Self::size_type();
+        self.value(format_args!("getelementptr {{ {size}, [0 x {type_}] }}, ptr {array}, i32 0, i32 1, {size} {index}"))
     }
 
     fn allocate(&mut self, layout: &str) -> String {
@@ -602,7 +680,7 @@ impl Emitter {
             ValueType::Float(_) => "double".to_owned(),
             ValueType::Bool => "i1".to_owned(),
             ValueType::Char => "i32".to_owned(),
-            ValueType::String | ValueType::Struct(_) => "ptr".to_owned(),
+            ValueType::String | ValueType::Struct(_) | ValueType::Array(_) => "ptr".to_owned(),
         }
     }
 

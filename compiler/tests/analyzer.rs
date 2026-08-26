@@ -107,3 +107,18 @@ fn checks_named_struct_fields_and_mutability() {
         assert_eq!(analyze_error(source).message, message);
     }
 }
+
+#[test]
+fn checks_array_element_and_index_types() {
+    for (source, message) in [
+        ("fn f() { let xs: [i32] = [1, true]; }", "expected i32, found bool"),
+        ("fn f() { let xs = []; }", "empty array needs an element type"),
+        ("fn f(xs: [i32]) { xs[false]; }", "array index must be an integer"),
+        (
+            "fn f(xs: [i32]) { xs[0]++; }",
+            "cannot assign to immutable binding 'xs'",
+        ),
+    ] {
+        assert_eq!(analyze_error(source).message, message);
+    }
+}

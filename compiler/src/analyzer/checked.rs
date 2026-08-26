@@ -144,4 +144,11 @@ pub(crate) enum ExpressionKind {
         object: Box<CheckedExpression>,
         index: usize,
     },
+
+    Array(Vec<CheckedExpression>),
+
+    Index {
+        object: Box<CheckedExpression>,
+        index: Box<CheckedExpression>,
+    },
 }

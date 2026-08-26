@@ -146,3 +146,38 @@ fn compiles_struct_construction_and_shared_fields() {
 
     assert_eq!(status.code(), Some(42));
 }
+
+#[test]
+fn compiles_chains_and_evaluates_index_updates_once() {
+    let status = compile_and_run(
+        r#"
+        struct Item { value: i32, }
+        struct Bag { items: [Item], }
+
+        fn make_bag() -> Bag {
+            Bag { items: [Item { value: 13, }, Item { value: 25, }], }
+        }
+
+        fn main() -> i32 {
+            let mut bag = make_bag();
+            let alias = bag.items;
+            let mut i: u8 = 0;
+            bag.items[i++].value += 4;
+
+            if i == 1 { alias[0].value + make_bag().items[1].value } else { 0 }
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}
+
+#[test]
+fn traps_out_of_bounds_array_reads() {
+    for source in [
+        "fn main() -> i32 { let xs: [i32] = []; xs[0] }",
+        "fn main() -> i32 { let xs: [i32] = [42]; xs[-1] }",
+    ] {
+        assert_eq!(compile_and_run(source).code(), None);
+    }
+}

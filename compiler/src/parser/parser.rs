@@ -507,6 +507,16 @@ impl Parser {
                 Ok(expression)
             }
             TokenKind::LeftBrace => Ok(Expression::Block(self.parse_block()?)),
+            TokenKind::LeftBracket => {
+                self.advance();
+                let elements = self.parse_expression_list(TokenKind::RightBracket)?;
+                let end = self.consume(TokenKind::RightBracket, "expected ']' after array elements")?.span.end;
+
+                Ok(Expression::Array {
+                    elements,
+                    span: Span::new(token.span.start, end),
+                })
+            }
             TokenKind::If => self.parse_if_expression(),
             TokenKind::Match => self.parse_match_expression(),
             _ => Err(ParseError::new(
@@ -694,7 +704,7 @@ impl Parser {
             "expected '('",
         )?;
 
-        let arguments = self.parse_argument_list()?;
+        let arguments = self.parse_expression_list(TokenKind::RightParen)?;
 
         let start = callee.span().start;
 
@@ -1059,20 +1069,18 @@ impl Parser {
         })
     }
 
-    fn parse_argument_list(&mut self) -> ParseResult<Vec<Expression>> {
-        let mut arguments = Vec::new();
+    fn parse_expression_list(&mut self, closing: TokenKind) -> ParseResult<Vec<Expression>> {
+        let mut expressions = Vec::new();
 
-        if self.check(TokenKind::RightParen) {
-            return Ok(arguments);
+        while !self.check(closing.clone()) {
+            expressions.push(self.parse_expression_with_struct_literal(true)?);
+
+            if !self.matches(TokenKind::Comma) {
+                break;
+            }
         }
 
-        arguments.push(self.parse_expression(Precedence::Lowest)?);
-
-        while self.matches(TokenKind::Comma) {
-            arguments.push(self.parse_expression_with_struct_literal(true)?);
-        }
-
-        Ok(arguments)
+        Ok(expressions)
     }
 
     fn parse_struct_field_list(&mut self) -> ParseResult<Vec<Field>> {

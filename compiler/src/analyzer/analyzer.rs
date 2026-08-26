@@ -188,7 +188,7 @@ impl Analyzer {
                     _ => Err(AnalyzeError::new(format!("unknown type '{name}'"), *span)),
                 }
             }
-            Type::Array { span, .. } => Err(AnalyzeError::new("unsupported type", *span)),
+            Type::Array { element, .. } => Ok(ValueType::Array(Box::new(self.resolve_type(element)?))),
         }
     }
 
@@ -377,6 +377,8 @@ impl Analyzer {
             }
             Expression::Struct { name, fields, .. } => self.check_struct(name, fields, span)?,
             Expression::Member { object, member, .. } => self.check_member(object, member, span)?,
+            Expression::Array { elements, .. } => self.check_array(elements, expected, span)?,
+            Expression::Index { object, index, .. } => self.check_index(object, index, span)?,
             Expression::Block(block) => {
                 let block = self.check_block(block, expected)?;
                 let flow = block.flow.clone();
@@ -567,7 +569,7 @@ impl Analyzer {
             Add | Subtract | Multiply | Divide | Modulo => type_.is_numeric(),
             BitwiseAnd | BitwiseOr | BitwiseXor | LeftShift | RightShift => type_.is_integer(),
             Less | LessEqual | Greater | GreaterEqual => type_.is_numeric() || *type_ == ValueType::Char,
-            Equal | NotEqual => !matches!(type_, ValueType::Struct(_)),
+            Equal | NotEqual => !matches!(type_, ValueType::Struct(_) | ValueType::Array(_)),
             LogicalAnd | LogicalOr => *type_ == ValueType::Bool,
         };
 
@@ -603,7 +605,7 @@ impl Analyzer {
     fn check_target(&mut self, target: &Expression) -> AnalyzeResult<CheckedExpression> {
         let mut root = target;
 
-        while let Expression::Member { object, .. } = root {
+        while let Expression::Member { object, .. } | Expression::Index { object, .. } = root {
             root = object;
         }
 
@@ -762,6 +764,69 @@ impl Analyzer {
         };
         let (index, type_) = self.struct_field(self.struct_index(name, span)?, member, span)?;
         let kind = ExpressionKind::Member { object: Box::new(object), index };
+
+        Ok(CheckedExpression::new(kind, Flow::Value(type_), span))
+    }
+
+    fn check_array(
+        &mut self,
+        elements: &[Expression],
+        expected: Option<&ValueType>,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        let (element_type, mut inferred) = if let Some(ValueType::Array(element)) = expected {
+            ((**element).clone(), None)
+        } else {
+            let (index, seed) = elements.iter().enumerate()
+                .find(|(_, element)| !Self::contextual_element(element))
+                .or_else(|| elements.iter().enumerate().find(|(_, element)| {
+                    !matches!(element, Expression::Array { elements, .. } if elements.is_empty())
+                }))
+                .ok_or_else(|| AnalyzeError::new("empty array needs an element type", span))?;
+            let seed = self.check_value(seed, None)?;
+
+            (seed.value_type().clone(), Some((index, seed)))
+        };
+        let mut values = Vec::new();
+
+        for (index, element) in elements.iter().enumerate() {
+            if inferred.as_ref().is_some_and(|(seed, _)| *seed == index) {
+                values.push(inferred.take().expect("inferred element").1);
+            } else {
+                values.push(self.check_value(element, Some(&element_type))?);
+            }
+        }
+
+        let type_ = ValueType::Array(Box::new(element_type));
+
+        Ok(CheckedExpression::new(ExpressionKind::Array(values), Flow::Value(type_), span))
+    }
+
+    fn contextual_element(expression: &Expression) -> bool {
+        match expression {
+            Expression::Array { elements, .. } => elements.iter().all(Self::contextual_element),
+            _ => Self::untyped_numeric(expression),
+        }
+    }
+
+    fn check_index(
+        &mut self,
+        object: &Expression,
+        index: &Expression,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        let object = self.check_value(object, None)?;
+        let ValueType::Array(element) = object.value_type() else {
+            return Err(AnalyzeError::new("indexing requires an array", span));
+        };
+        let index = self.check_value(index, None)?;
+
+        if !index.value_type().is_integer() {
+            return Err(AnalyzeError::new("array index must be an integer", index.span));
+        }
+
+        let type_ = (**element).clone();
+        let kind = ExpressionKind::Index { object: Box::new(object), index: Box::new(index) };
 
         Ok(CheckedExpression::new(kind, Flow::Value(type_), span))
     }

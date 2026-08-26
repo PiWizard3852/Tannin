@@ -167,6 +167,11 @@ pub enum Expression {
         span: Span,
     },
 
+    Array {
+        elements: Vec<Expression>,
+        span: Span,
+    },
+
     Match {
         expression: Box<Expression>,
         arms: Vec<MatchArm>,
@@ -298,6 +303,7 @@ impl Expression {
             Expression::Member { span, .. } => *span,
             Expression::Index { span, .. } => *span,
             Expression::Struct { span, .. } => *span,
+            Expression::Array { span, .. } => *span,
             Expression::Match { span, .. } => *span,
             Expression::If { span, .. } => *span,
             Expression::Block(block) => block.span,

@@ -935,6 +935,19 @@ fn parses_struct_values_next_to_control_blocks() {
     assert!(matches!(&**object, Expression::Struct { name, .. } if name == "Point"));
 }
 
+#[test]
+fn parses_index_after_array_value() {
+    let program = parse("fn value() -> i32 { [10, 42,][1] }");
+    let Declaration::Function(function) = &program.declarations[0] else {
+        panic!("expected function");
+    };
+    let Some(Expression::Index { object, .. }) = function.body.tail.as_deref() else {
+        panic!("expected index expression");
+    };
+
+    assert!(matches!(&**object, Expression::Array { elements, .. } if elements.len() == 2));
+}
+
 mod patterns {
     use super::*;
 

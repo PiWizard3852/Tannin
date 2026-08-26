@@ -23,6 +23,7 @@ pub(crate) enum ValueType {
     Char,
     String,
     Struct(String),
+    Array(Box<ValueType>),
 }
 
 impl ValueType {
@@ -80,6 +81,7 @@ impl fmt::Display for ValueType {
             Self::Char => write!(f, "char"),
             Self::String => write!(f, "string"),
             Self::Struct(name) => write!(f, "{name}"),
+            Self::Array(element) => write!(f, "[{element}]"),
         }
     }
 }
