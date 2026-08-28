@@ -654,6 +654,7 @@ impl Emitter {
             CheckedLiteral::Float(value) => format!("0x{:016X}", value.to_bits()),
             CheckedLiteral::Bool(value) => value.to_string(),
             CheckedLiteral::Char(value) => u32::from(*value).to_string(),
+            CheckedLiteral::EnumVariant(index) => index.to_string(),
             CheckedLiteral::String(value) => {
                 let name = format!("@tannin.str.{}", self.next_string);
                 self.next_string += 1;
@@ -679,7 +680,7 @@ impl Emitter {
             ValueType::Float(32) => "float".to_owned(),
             ValueType::Float(_) => "double".to_owned(),
             ValueType::Bool => "i1".to_owned(),
-            ValueType::Char => "i32".to_owned(),
+            ValueType::Char | ValueType::Enum(_) => "i32".to_owned(),
             ValueType::String | ValueType::Struct(_) | ValueType::Array(_) => "ptr".to_owned(),
         }
     }

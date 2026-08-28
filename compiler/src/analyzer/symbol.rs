@@ -13,6 +13,7 @@ pub enum Symbol {
     },
 
     Enum {
+        index: usize,
         span: Span,
     },
 

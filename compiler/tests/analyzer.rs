@@ -122,3 +122,17 @@ fn checks_array_element_and_index_types() {
         assert_eq!(analyze_error(source).message, message);
     }
 }
+
+#[test]
+fn checks_enum_variant_names_and_types() {
+    for (source, message) in [
+        ("enum A { One, One, }", "duplicate variant 'One'"),
+        ("enum A { One, } fn f() -> A { A::Two }", "'A' has no variant 'Two'"),
+        (
+            "enum A { One, } enum B { One, } fn f() -> A { B::One }",
+            "expected A, found B",
+        ),
+    ] {
+        assert_eq!(analyze_error(source).message, message);
+    }
+}

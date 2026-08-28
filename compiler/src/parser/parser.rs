@@ -485,6 +485,15 @@ impl Parser {
             TokenKind::Identifier(name) => {
                 self.advance();
 
+                if self.matches(TokenKind::ColonColon) {
+                    let (token_, variant) = self.consume_identifier(Some("expected variant name after '::'"))?;
+                    return Ok(Expression::EnumVariant {
+                        enum_: name,
+                        variant,
+                        span: Span::new(token.span.start, token_.span.end),
+                    });
+                }
+
                 if self.allow_struct_literal && self.check(TokenKind::LeftBrace) {
                     return self.parse_struct_literal(name, token.span.start);
                 }

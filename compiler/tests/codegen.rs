@@ -181,3 +181,23 @@ fn traps_out_of_bounds_array_reads() {
         assert_eq!(compile_and_run(source).code(), None);
     }
 }
+
+#[test]
+fn compiles_enum_values_and_equality() {
+    let status = compile_and_run(
+        r#"
+        enum Mode { Off, On, }
+        const DEFAULT: Mode = Mode::Off;
+
+        fn enable(mode: Mode) -> Mode {
+            if mode == Mode::On { mode } else { Mode::On }
+        }
+
+        fn main() -> i32 {
+            if DEFAULT != Mode::On && enable(DEFAULT) == Mode::On { 42 } else { 0 }
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}

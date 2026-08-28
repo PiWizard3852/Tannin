@@ -948,6 +948,20 @@ fn parses_index_after_array_value() {
     assert!(matches!(&**object, Expression::Array { elements, .. } if elements.len() == 2));
 }
 
+#[test]
+fn parses_qualified_enum_values() {
+    let program = parse("fn value() -> Direction { Direction::North }");
+    let Declaration::Function(function) = &program.declarations[0] else {
+        panic!("expected function");
+    };
+
+    assert!(matches!(
+        function.body.tail.as_deref(),
+        Some(Expression::EnumVariant { enum_, variant, .. })
+            if enum_ == "Direction" && variant == "North"
+    ));
+}
+
 mod patterns {
     use super::*;
 

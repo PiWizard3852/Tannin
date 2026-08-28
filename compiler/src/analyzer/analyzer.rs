@@ -14,6 +14,7 @@ pub struct Analyzer {
     signatures: HashMap<String, FunctionType>,
     constants: HashMap<String, (CheckedLiteral, ValueType)>,
     structs: Vec<CheckedStruct>,
+    enums: Vec<Vec<String>>,
     locals: Vec<ValueType>,
     return_type: Option<ValueType>,
 }
@@ -26,6 +27,7 @@ impl Analyzer {
             signatures: HashMap::new(),
             constants: HashMap::new(),
             structs: Vec::new(),
+            enums: Vec::new(),
             locals: Vec::new(),
             return_type: None,
         };
@@ -72,11 +74,32 @@ impl Analyzer {
                     (&struct_.name, struct_.span, Symbol::Struct { index, span: struct_.span })
                 }
 
-                Declaration::Enum(enum_) => (
-                    &enum_.name,
-                    enum_.span,
-                    Symbol::Enum { span: enum_.span },
-                ),
+                Declaration::Enum(enum_) => {
+                    if ValueType::named(&enum_.name).is_some() {
+                        return Err(AnalyzeError::new(
+                            format!("'{}' is a built-in type", enum_.name),
+                            enum_.span,
+                        ));
+                    }
+
+                    let mut variants = Vec::new();
+
+                    for variant in &enum_.variants {
+                        if variants.contains(&variant.name) {
+                            return Err(AnalyzeError::new(
+                                format!("duplicate variant '{}'", variant.name),
+                                variant.span,
+                            ));
+                        }
+
+                        variants.push(variant.name.clone());
+                    }
+
+                    let index = self.enums.len();
+                    self.enums.push(variants);
+
+                    (&enum_.name, enum_.span, Symbol::Enum { index, span: enum_.span })
+                }
 
                 Declaration::Const(const_) => (
                     &const_.name,
@@ -150,7 +173,7 @@ impl Analyzer {
 
             let type_ = self.resolve_type(&const_.type_)?;
             let is_literal = match &const_.value {
-                Expression::Literal { .. } => true,
+                Expression::Literal { .. } | Expression::EnumVariant { .. } => true,
                 Expression::Unary { operator: UnaryOperator::Negate, operand, .. } => {
                     matches!(**operand, Expression::Literal {
                         value: Literal::Integer(_) | Literal::Float(_), ..
@@ -185,6 +208,7 @@ impl Analyzer {
 
                 match self.globals.lookup(name) {
                     Some(Symbol::Struct { .. }) => Ok(ValueType::Struct(name.clone())),
+                    Some(Symbol::Enum { .. }) => Ok(ValueType::Enum(name.clone())),
                     _ => Err(AnalyzeError::new(format!("unknown type '{name}'"), *span)),
                 }
             }
@@ -379,6 +403,14 @@ impl Analyzer {
             Expression::Member { object, member, .. } => self.check_member(object, member, span)?,
             Expression::Array { elements, .. } => self.check_array(elements, expected, span)?,
             Expression::Index { object, index, .. } => self.check_index(object, index, span)?,
+            Expression::EnumVariant { enum_, variant, .. } => {
+                let literal = self.enum_variant(enum_, variant, span)?;
+                CheckedExpression::new(
+                    ExpressionKind::Literal(literal),
+                    Flow::Value(ValueType::Enum(enum_.clone())),
+                    span,
+                )
+            }
             Expression::Block(block) => {
                 let block = self.check_block(block, expected)?;
                 let flow = block.flow.clone();
@@ -829,5 +861,19 @@ impl Analyzer {
         let kind = ExpressionKind::Index { object: Box::new(object), index: Box::new(index) };
 
         Ok(CheckedExpression::new(kind, Flow::Value(type_), span))
+    }
+
+    fn enum_variants(&self, name: &str, span: Span) -> AnalyzeResult<&[String]> {
+        match self.globals.lookup(name) {
+            Some(Symbol::Enum { index, .. }) => Ok(&self.enums[*index]),
+            _ => Err(AnalyzeError::new(format!("unknown enum '{name}'"), span)),
+        }
+    }
+
+    fn enum_variant(&self, name: &str, variant: &str, span: Span) -> AnalyzeResult<CheckedLiteral> {
+        self.enum_variants(name, span)?.iter()
+            .position(|known| known == variant)
+            .map(CheckedLiteral::EnumVariant)
+            .ok_or_else(|| AnalyzeError::new(format!("'{name}' has no variant '{variant}'"), span))
     }
 }

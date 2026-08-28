@@ -82,6 +82,7 @@ pub(crate) enum CheckedLiteral {
     Bool(bool),
     Char(char),
     String(String),
+    EnumVariant(usize),
 }
 
 #[derive(Debug)]
