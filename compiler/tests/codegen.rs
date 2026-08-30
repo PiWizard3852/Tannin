@@ -201,3 +201,63 @@ fn compiles_enum_values_and_equality() {
 
     assert_eq!(status.code(), Some(42));
 }
+
+#[test]
+fn compiles_matches_with_chained_expressions_and_mutation() {
+    let status = compile_and_run(
+        r#"
+        enum Choice { First, Second, }
+        struct Item { value: i32, }
+        struct Bag { items: [Item], }
+
+        fn make_bag() -> Bag {
+            Bag { items: [Item { value: 17, }, Item { value: 25, },], }
+        }
+
+        fn choose(index: u8) -> Choice {
+            if index == 0 { Choice::Second } else { Choice::First }
+        }
+
+        fn main() -> i32 {
+            let mut index: u8 = 0;
+            let mut total = make_bag().items[0].value;
+            let picked = match choose(index++) {
+                Choice::First => { return 0; },
+                Choice::Second => make_bag().items[index].value,
+            };
+            total += picked;
+
+            if index != 1 { return 0; };
+
+            match total {
+                0 => 0,
+                value => value,
+            }
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}
+
+#[test]
+fn compiles_boolean_and_string_patterns() {
+    let status = compile_and_run(
+        r#"
+        fn main() -> i32 {
+            let text = match true {
+                true => "café",
+                false => "",
+            };
+
+            match text {
+                "cafe" => 1,
+                "café" => 42,
+                _ => 0,
+            }
+        }
+        "#,
+    );
+
+    assert_eq!(status.code(), Some(42));
+}

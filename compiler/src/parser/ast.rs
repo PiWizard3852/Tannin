@@ -214,7 +214,8 @@ pub enum Pattern {
     },
 
     EnumVariant {
-        value: String,
+        enum_: String,
+        variant: String,
         span: Span,
     },
 

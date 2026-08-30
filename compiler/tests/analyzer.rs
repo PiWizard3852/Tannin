@@ -136,3 +136,27 @@ fn checks_enum_variant_names_and_types() {
         assert_eq!(analyze_error(source).message, message);
     }
 }
+
+#[test]
+fn checks_match_coverage_and_bindings() {
+    for (source, message) in [
+        (
+            "enum M { A, B, } fn f(x: M) -> i32 { match x { M::A => 1, } }",
+            "non-exhaustive match",
+        ),
+        (
+            "fn f() { match 1 { 1 => 2, 1 => 3, _ => 0, }; }",
+            "duplicate match pattern",
+        ),
+        (
+            "fn f() -> i32 { match true { true => 1, false => false, } }",
+            "expected i32, found bool",
+        ),
+        (
+            "fn f() { match 1 { value => value, }; value; }",
+            "unknown name 'value'",
+        ),
+    ] {
+        assert_eq!(analyze_error(source).message, message);
+    }
+}

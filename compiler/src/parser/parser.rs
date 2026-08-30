@@ -932,6 +932,15 @@ impl Parser {
             TokenKind::Identifier(value) => {
                 self.advance();
 
+                if self.matches(TokenKind::ColonColon) {
+                    let (token_, variant) = self.consume_identifier(Some("expected variant name after '::'"))?;
+                    return Ok(Pattern::EnumVariant {
+                        enum_: value,
+                        variant,
+                        span: Span::new(token.span.start, token_.span.end),
+                    });
+                }
+
                 Ok(Pattern::Identifier {
                     value,
                     span: token.span,

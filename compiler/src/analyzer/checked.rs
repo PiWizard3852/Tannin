@@ -75,7 +75,7 @@ impl CheckedStatement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum CheckedLiteral {
     Integer(i128),
     Float(f64),
@@ -152,4 +152,22 @@ pub(crate) enum ExpressionKind {
         object: Box<CheckedExpression>,
         index: Box<CheckedExpression>,
     },
+
+    Match {
+        expression: Box<CheckedExpression>,
+        arms: Vec<CheckedArm>,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct CheckedArm {
+    pub pattern: CheckedPattern,
+    pub value: CheckedExpression,
+}
+
+#[derive(Debug)]
+pub(crate) enum CheckedPattern {
+    Literal(CheckedLiteral),
+    Binding(usize),
+    Wildcard,
 }

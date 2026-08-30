@@ -416,7 +416,9 @@ impl Analyzer {
                 let flow = block.flow.clone();
                 CheckedExpression::new(ExpressionKind::Block(block), flow, span)
             }
-            _ => return Err(AnalyzeError::new("unsupported expression", span)),
+            Expression::Match { expression, arms, .. } => {
+                self.check_match(expression, arms, expected, span)?
+            }
         };
 
         if let (Some(expected), Some(actual)) = (expected, result.flow.value()) {
@@ -875,5 +877,126 @@ impl Analyzer {
             .position(|known| known == variant)
             .map(CheckedLiteral::EnumVariant)
             .ok_or_else(|| AnalyzeError::new(format!("'{name}' has no variant '{variant}'"), span))
+    }
+
+    fn check_match(
+        &mut self,
+        expression: &Expression,
+        arms: &[MatchArm],
+        expected: Option<&ValueType>,
+        span: Span,
+    ) -> AnalyzeResult<CheckedExpression> {
+        if arms.is_empty() {
+            return Err(AnalyzeError::new("match needs at least one arm", span));
+        }
+
+        let expression = self.check_value(expression, None)?;
+        let type_ = expression.value_type();
+        let alternatives = match type_ {
+            ValueType::Bool => Some(2),
+            ValueType::Enum(name) => Some(self.enum_variants(name, span)?.len()),
+            _ => None,
+        };
+        let mut inferred = if expected.is_none() {
+            arms.iter().enumerate()
+                .find(|(_, arm)| !Self::contextual_element(&arm.value))
+                .map(|(index, arm)| self.check_match_arm(arm, type_, None).map(|arm| (index, arm)))
+                .transpose()?
+        } else {
+            None
+        };
+        let inferred_type = inferred.as_ref().and_then(|(_, arm)| arm.value.flow.value()).cloned();
+        let mut covered = Vec::new();
+        let mut exhaustive = false;
+        let mut values = Vec::new();
+        let mut flow = Flow::Returns;
+
+        for (index, arm) in arms.iter().enumerate() {
+            if exhaustive {
+                return Err(AnalyzeError::new("unreachable match arm", arm.span));
+            }
+
+            let expected = expected.or(inferred_type.as_ref()).or_else(|| flow.value());
+            let checked = if inferred.as_ref().is_some_and(|(seed, _)| *seed == index) {
+                inferred.take().expect("inferred arm").1
+            } else {
+                self.check_match_arm(arm, type_, expected)?
+            };
+
+            match &checked.pattern {
+                CheckedPattern::Literal(literal) => {
+                    if covered.contains(literal) {
+                        return Err(AnalyzeError::new("duplicate match pattern", arm.pattern.span()));
+                    }
+
+                    covered.push(literal.clone());
+                    exhaustive = alternatives == Some(covered.len());
+                }
+
+                CheckedPattern::Binding(_) | CheckedPattern::Wildcard => exhaustive = true,
+            }
+
+            flow = Self::merge_flows(&flow, &checked.value.flow, arm.value.span())?;
+            values.push(checked);
+        }
+
+        if !exhaustive {
+            return Err(AnalyzeError::new("non-exhaustive match", span));
+        }
+
+        let kind = ExpressionKind::Match { expression: Box::new(expression), arms: values };
+
+        Ok(CheckedExpression::new(kind, flow, span))
+    }
+
+    fn check_match_arm(
+        &mut self,
+        arm: &MatchArm,
+        scrutinee: &ValueType,
+        expected: Option<&ValueType>,
+    ) -> AnalyzeResult<CheckedArm> {
+        self.scopes.push(Scope::new());
+        let result = self.check_pattern(&arm.pattern, scrutinee).and_then(|pattern| {
+            let value = self.check_expression(&arm.value, expected)?;
+            Ok(CheckedArm { pattern, value })
+        });
+        self.scopes.pop();
+
+        result
+    }
+
+    fn check_pattern(&mut self, pattern: &Pattern, type_: &ValueType) -> AnalyzeResult<CheckedPattern> {
+        let literal = match pattern {
+            Pattern::Wildcard { .. } => return Ok(CheckedPattern::Wildcard),
+
+            Pattern::Identifier { value, span } => {
+                let index = self.declare_local(value, type_.clone(), false, *span)?;
+                return Ok(CheckedPattern::Binding(index));
+            }
+
+            Pattern::Literal { value, span } => {
+                let expression = self.check_literal(value, false, Some(type_), *span)?;
+                let actual = expression.value_type();
+
+                if actual != type_ {
+                    return Err(AnalyzeError::new(format!("expected {type_} pattern, found {actual}"), *span));
+                }
+
+                let ExpressionKind::Literal(literal) = expression.kind else {
+                    unreachable!("checked literal pattern");
+                };
+                literal
+            }
+
+            Pattern::EnumVariant { enum_, variant, span } => {
+                if !matches!(type_, ValueType::Enum(name) if name == enum_) {
+                    return Err(AnalyzeError::new(format!("expected {type_} pattern, found {enum_}"), *span));
+                }
+
+                self.enum_variant(enum_, variant, *span)?
+            }
+        };
+
+        Ok(CheckedPattern::Literal(literal))
     }
 }

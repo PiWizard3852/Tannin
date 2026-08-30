@@ -238,6 +238,9 @@ impl Emitter {
 
                 self.emit_array(element_type, elements)?
             }
+            ExpressionKind::Match { expression: scrutinee, arms } => {
+                return self.emit_match(scrutinee, arms, expression.flow.value());
+            }
         };
 
         Ok(Some(value))
@@ -315,6 +318,54 @@ impl Emitter {
         self.connect(&end, Some(value), &mut incoming);
 
         Ok(self.join(&end, Some(&ValueType::Bool), incoming).expect("logical result"))
+    }
+
+    fn emit_match(
+        &mut self,
+        expression: &CheckedExpression,
+        arms: &[CheckedArm],
+        type_: Option<&ValueType>,
+    ) -> CodegenResult<Option<String>> {
+        let scrutinee = expression.value_type();
+        let value = self.emit_value(expression)?;
+        let end = self.label();
+        let mut incoming = Vec::new();
+
+        for arm in arms {
+            let next = match &arm.pattern {
+                CheckedPattern::Literal(literal) => {
+                    let literal = self.literal(literal);
+                    let condition = self.binary(BinaryOperator::Equal, scrutinee, &value, &literal);
+                    let hit = self.label();
+                    let next = self.label();
+                    self.branch_if(&condition, &hit, &next);
+                    self.start_block(&hit);
+
+                    Some(next)
+                }
+
+                CheckedPattern::Binding(index) => {
+                    self.store(scrutinee, &value, &format!("%local.{index}"));
+                    None
+                }
+
+                CheckedPattern::Wildcard => None,
+            };
+
+            let result = self.emit_expression(&arm.value)?;
+            self.connect(&end, result, &mut incoming);
+
+            match next {
+                Some(next) => self.start_block(&next),
+                None => break,
+            }
+        }
+
+        if !self.terminated {
+            self.terminate(format_args!("unreachable"));
+        }
+
+        Ok(self.join(&end, type_, incoming))
     }
 
     fn connect(&mut self, end: &str, value: Option<String>, incoming: &mut Vec<(Option<String>, String)>) {

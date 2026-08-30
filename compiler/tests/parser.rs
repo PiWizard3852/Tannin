@@ -966,6 +966,24 @@ mod patterns {
     use super::*;
 
     #[test]
+    fn parses_qualified_enum_patterns() {
+        let program = parse(
+            "fn f(mode: Mode) -> i32 { match mode { Mode::On => 42, _ => 0, } }",
+        );
+        let Declaration::Function(function) = &program.declarations[0] else {
+            panic!("expected function");
+        };
+        let Some(Expression::Match { arms, .. }) = function.body.tail.as_deref() else {
+            panic!("expected match expression");
+        };
+
+        assert!(matches!(
+            &arms[0].pattern,
+            Pattern::EnumVariant { enum_, variant, .. } if enum_ == "Mode" && variant == "On"
+        ));
+    }
+
+    #[test]
     fn parses_identifier_pattern() {
         let program = parse(
             r#"
