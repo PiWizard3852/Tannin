@@ -217,11 +217,11 @@ impl Parser {
                 TokenKind::Return => self.parse_return_statement()?,
                 _ => match self.parse_expression_with_struct_literal(true)? {
                     Expression::Block(block)
-                        if !self.check(TokenKind::Semicolon)
-                            && (!self.check(TokenKind::RightBrace) || block.tail.is_none()) =>
-                    {
-                        Statement::Block(block)
-                    }
+                    if !self.check(TokenKind::Semicolon)
+                        && (!self.check(TokenKind::RightBrace) || block.tail.is_none()) =>
+                        {
+                            Statement::Block(block)
+                        }
 
                     expression if self.check(TokenKind::RightBrace) => {
                         tail = Some(Box::new(expression));

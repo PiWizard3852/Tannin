@@ -125,6 +125,7 @@ impl Analyzer {
                 let parameters = function.parameters.iter()
                     .map(|parameter| self.resolve_type(&parameter.type_))
                     .collect::<AnalyzeResult<_>>()?;
+
                 let return_type = function.return_type.as_ref()
                     .map(|type_| self.resolve_type(type_))
                     .transpose()?;
@@ -172,6 +173,7 @@ impl Analyzer {
             };
 
             let type_ = self.resolve_type(&const_.type_)?;
+
             let is_literal = match &const_.value {
                 Expression::Literal { .. } | Expression::EnumVariant { .. } => true,
                 Expression::Unary { operator: UnaryOperator::Negate, operand, .. } => {
@@ -218,6 +220,7 @@ impl Analyzer {
 
     fn check_function(&mut self, function: &FunctionDecl) -> AnalyzeResult<CheckedFunction> {
         let type_ = self.signatures[&function.name].clone();
+
         self.return_type = type_.return_type.clone();
         self.scopes.push(Scope::new());
 
@@ -295,10 +298,13 @@ impl Analyzer {
 
             Statement::Let { name, mutable, type_, initializer, span } => {
                 let type_ = type_.as_ref().map(|type_| self.resolve_type(type_)).transpose()?;
+
                 let initializer = initializer.as_ref().ok_or_else(|| {
                     AnalyzeError::new("variable needs an initializer", *span)
                 })?;
+
                 let initializer = self.check_value(initializer, type_.as_ref())?;
+
                 let index = self.declare_local(
                     name,
                     initializer.value_type().clone(),
@@ -318,6 +324,7 @@ impl Analyzer {
 
             Statement::Return { value, span } => {
                 let return_type = self.return_type.clone();
+
                 let value = match (value, return_type.as_ref()) {
                     (Some(value), Some(type_)) => Some(self.check_value(value, Some(type_))?),
                     (None, None) => None,
@@ -333,7 +340,6 @@ impl Analyzer {
             Statement::Expression { expression, .. } => {
                 Ok(CheckedStatement::Expression(self.check_expression(expression, None)?))
             }
-
         }
     }
 
@@ -456,14 +462,18 @@ impl Analyzer {
                 let type_ = expected.filter(|type_| type_.is_integer())
                     .cloned()
                     .unwrap_or(ValueType::ISIZE);
+
                 let ValueType::Integer { width, signed } = type_ else {
                     unreachable!();
                 };
+
                 let bits = width.bits() - u32::from(signed);
                 let bound = 1_i128 << bits;
+
                 let number = value.replace('_', "").parse::<i128>().ok().map(|number| {
                     if negative { -number } else { number }
                 });
+
                 let lower = if signed { -bound } else { 0 };
 
                 let number = number.filter(|number| {
@@ -475,14 +485,17 @@ impl Analyzer {
 
             Literal::Float(value) => {
                 let value = value.replace('_', "");
+
                 let (number, type_) = if expected == Some(&ValueType::Float(32)) {
                     (value.parse::<f32>().map(f64::from), ValueType::Float(32))
                 } else {
                     (value.parse::<f64>(), ValueType::Float(64))
                 };
+
                 let number = number.ok().filter(|number| number.is_finite()).ok_or_else(|| {
                     AnalyzeError::new(format!("floating point literal out of range for {type_}"), span)
                 })?;
+
                 let number = if negative { -number } else { number };
 
                 (CheckedLiteral::Float(number), type_)
@@ -524,6 +537,7 @@ impl Analyzer {
         let arguments = arguments.iter().zip(&type_.parameters)
             .map(|(argument, type_)| self.check_value(argument, Some(type_)))
             .collect::<AnalyzeResult<_>>()?;
+
         let kind = ExpressionKind::Call { function: function.clone(), arguments };
         let flow = type_.return_type.map_or(Flow::NoValue, Flow::Value);
 
@@ -547,18 +561,21 @@ impl Analyzer {
             UnaryOperator::PreIncrement | UnaryOperator::PreDecrement
                 | UnaryOperator::PostIncrement | UnaryOperator::PostDecrement
         );
+
         let operand = if update {
             self.check_target(operand)?
         } else {
             self.check_value(operand, expected)?
         };
+
         let type_ = operand.value_type().clone();
+
         let valid = match operator {
             UnaryOperator::Negate => matches!(type_, ValueType::Integer { signed: true, .. } | ValueType::Float(_)),
             UnaryOperator::Not => type_ == ValueType::Bool,
             UnaryOperator::BitwiseNot => type_.is_integer(),
             UnaryOperator::PreIncrement | UnaryOperator::PreDecrement
-                | UnaryOperator::PostIncrement | UnaryOperator::PostDecrement => type_.is_numeric(),
+            | UnaryOperator::PostIncrement | UnaryOperator::PostDecrement => type_.is_numeric(),
         };
 
         if !valid {
@@ -581,11 +598,13 @@ impl Analyzer {
         use BinaryOperator::*;
 
         let comparison = matches!(operator, Equal | NotEqual | Less | LessEqual | Greater | GreaterEqual);
+
         let expected_operand = match operator {
             LogicalAnd | LogicalOr => Some(&ValueType::Bool),
             _ if comparison => None,
             _ => expected.filter(|type_| type_.is_numeric()),
         };
+
         let (left, right) = if expected_operand.is_none()
             && Self::untyped_numeric(left) && !Self::untyped_numeric(right)
         {
@@ -599,6 +618,7 @@ impl Analyzer {
         };
 
         let type_ = left.value_type();
+
         let valid = match operator {
             Add | Subtract | Multiply | Divide | Modulo => type_.is_numeric(),
             BitwiseAnd | BitwiseOr | BitwiseXor | LeftShift | RightShift => type_.is_integer(),
@@ -626,11 +646,11 @@ impl Analyzer {
                 Self::untyped_numeric(operand)
             }
             Expression::Binary { left, operator, right, .. }
-                if matches!(operator, Add | Subtract | Multiply | Divide | Modulo
+            if matches!(operator, Add | Subtract | Multiply | Divide | Modulo
                     | BitwiseAnd | BitwiseOr | BitwiseXor | LeftShift | RightShift) =>
-            {
-                Self::untyped_numeric(left) && Self::untyped_numeric(right)
-            }
+                {
+                    Self::untyped_numeric(left) && Self::untyped_numeric(right)
+                }
             Expression::Block(block) => block.tail.as_deref().is_some_and(Self::untyped_numeric),
             _ => false,
         }
@@ -668,6 +688,7 @@ impl Analyzer {
 
         let target = self.check_target(target)?;
         let type_ = target.value_type().clone();
+
         let valid = match operator {
             Assign => true,
             AddAssign | SubAssign | MulAssign | DivAssign | ModAssign => type_.is_numeric(),
@@ -679,6 +700,7 @@ impl Analyzer {
         }
 
         let value = self.check_value(value, Some(&type_))?;
+
         let kind = ExpressionKind::Assignment {
             target: Box::new(target),
             operator,
@@ -699,13 +721,13 @@ impl Analyzer {
         let condition = self.check_value(condition, Some(&ValueType::Bool))?;
         let (then_branch, else_branch) = match else_branch {
             Some(else_branch)
-                if expected.is_none() && Self::untyped_numeric(then_branch)
-                    && !Self::untyped_numeric(else_branch) =>
-            {
-                let else_branch = self.check_expression(else_branch, None)?;
-                let then_branch = self.check_expression(then_branch, else_branch.flow.value())?;
-                (then_branch, Some(else_branch))
-            }
+            if expected.is_none() && Self::untyped_numeric(then_branch)
+                && !Self::untyped_numeric(else_branch) =>
+                {
+                    let else_branch = self.check_expression(else_branch, None)?;
+                    let then_branch = self.check_expression(then_branch, else_branch.flow.value())?;
+                    (then_branch, Some(else_branch))
+                }
 
             _ => {
                 let then_branch = self.check_expression(then_branch, expected)?;
@@ -715,11 +737,13 @@ impl Analyzer {
                 (then_branch, else_branch)
             }
         };
+
         let flow = Self::merge_flows(
             &then_branch.flow,
             else_branch.as_ref().map_or(&Flow::NoValue, |branch| &branch.flow),
             span,
         )?;
+
         let kind = ExpressionKind::If {
             condition: Box::new(condition),
             then_branch: Box::new(then_branch),
@@ -746,6 +770,7 @@ impl Analyzer {
 
     fn struct_field(&self, struct_: usize, name: &str, span: Span) -> AnalyzeResult<(usize, ValueType)> {
         let struct_ = &self.structs[struct_];
+
         struct_.fields.iter().enumerate()
             .find(|(_, (field, _))| field == name)
             .map(|(index, (_, type_))| (index, type_.clone()))
@@ -793,9 +818,11 @@ impl Analyzer {
         span: Span,
     ) -> AnalyzeResult<CheckedExpression> {
         let object = self.check_value(object, None)?;
+
         let ValueType::Struct(name) = object.value_type() else {
             return Err(AnalyzeError::new("field access requires a struct", span));
         };
+
         let (index, type_) = self.struct_field(self.struct_index(name, span)?, member, span)?;
         let kind = ExpressionKind::Member { object: Box::new(object), index };
 
@@ -817,10 +844,12 @@ impl Analyzer {
                     !matches!(element, Expression::Array { elements, .. } if elements.is_empty())
                 }))
                 .ok_or_else(|| AnalyzeError::new("empty array needs an element type", span))?;
+
             let seed = self.check_value(seed, None)?;
 
             (seed.value_type().clone(), Some((index, seed)))
         };
+
         let mut values = Vec::new();
 
         for (index, element) in elements.iter().enumerate() {
@@ -850,9 +879,11 @@ impl Analyzer {
         span: Span,
     ) -> AnalyzeResult<CheckedExpression> {
         let object = self.check_value(object, None)?;
+
         let ValueType::Array(element) = object.value_type() else {
             return Err(AnalyzeError::new("indexing requires an array", span));
         };
+
         let index = self.check_value(index, None)?;
 
         if !index.value_type().is_integer() {
@@ -892,11 +923,13 @@ impl Analyzer {
 
         let expression = self.check_value(expression, None)?;
         let type_ = expression.value_type();
+
         let alternatives = match type_ {
             ValueType::Bool => Some(2),
             ValueType::Enum(name) => Some(self.enum_variants(name, span)?.len()),
             _ => None,
         };
+
         let mut inferred = if expected.is_none() {
             arms.iter().enumerate()
                 .find(|(_, arm)| !Self::contextual_element(&arm.value))
@@ -905,7 +938,9 @@ impl Analyzer {
         } else {
             None
         };
+
         let inferred_type = inferred.as_ref().and_then(|(_, arm)| arm.value.flow.value()).cloned();
+
         let mut covered = Vec::new();
         let mut exhaustive = false;
         let mut values = Vec::new();
@@ -917,6 +952,7 @@ impl Analyzer {
             }
 
             let expected = expected.or(inferred_type.as_ref()).or_else(|| flow.value());
+
             let checked = if inferred.as_ref().is_some_and(|(seed, _)| *seed == index) {
                 inferred.take().expect("inferred arm").1
             } else {
@@ -956,10 +992,12 @@ impl Analyzer {
         expected: Option<&ValueType>,
     ) -> AnalyzeResult<CheckedArm> {
         self.scopes.push(Scope::new());
+
         let result = self.check_pattern(&arm.pattern, scrutinee).and_then(|pattern| {
             let value = self.check_expression(&arm.value, expected)?;
             Ok(CheckedArm { pattern, value })
         });
+
         self.scopes.pop();
 
         result

@@ -1,7 +1,7 @@
-use compiler::analyzer::{Analyzer, AnalyzeError};
+use compiler::analyzer::{AnalyzeError, Analyzer};
 use compiler::lexer::Scanner;
-use compiler::parser::Parser;
 use compiler::parser::ast::Program;
+use compiler::parser::Parser;
 
 fn parse(source: &str) -> Program {
     let tokens = Scanner::new(source).scan_tokens();

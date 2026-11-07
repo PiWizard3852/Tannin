@@ -1,3 +1,4 @@
+pub use span::Span;
+
 mod span;
 
-pub use span::Span;

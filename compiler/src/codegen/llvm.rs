@@ -65,17 +65,23 @@ impl Emitter {
 
         if self.needs_string_equal {
             let size = Self::size_type();
+
             writeln!(output, "declare i32 @memcmp(ptr, ptr, {size})\n").unwrap();
             writeln!(output, "define internal i1 @tannin.runtime.string_equal(ptr %a, ptr %b) {{").unwrap();
+
             output.push_str("entry:\n");
+
             writeln!(output, "    %a.len = load {size}, ptr %a").unwrap();
             writeln!(output, "    %b.len = load {size}, ptr %b").unwrap();
             writeln!(output, "    %same.len = icmp eq {size} %a.len, %b.len").unwrap();
+
             output.push_str("    br i1 %same.len, label %compare, label %different\n");
             output.push_str("compare:\n");
+
             writeln!(output, "    %a.bytes = getelementptr {{ {size}, [0 x i8] }}, ptr %a, i32 0, i32 1").unwrap();
             writeln!(output, "    %b.bytes = getelementptr {{ {size}, [0 x i8] }}, ptr %b, i32 0, i32 1").unwrap();
             writeln!(output, "    %order = call i32 @memcmp(ptr %a.bytes, ptr %b.bytes, {size} %a.len)").unwrap();
+
             output.push_str("    %equal = icmp eq i32 %order, 0\n    ret i1 %equal\n");
             output.push_str("different:\n    ret i1 false\n}\n\n");
         }
@@ -87,12 +93,16 @@ impl Emitter {
     fn emit_function(&mut self, function: &CheckedFunction) -> CodegenResult<()> {
         self.next_value = 0;
         self.next_label = 0;
+
         let linkage = if function.pub_ { "" } else { "internal " };
         let return_type = Self::return_type(function.type_.return_type.as_ref());
+
         let parameters = function.type_.parameters.iter().enumerate()
             .map(|(index, type_)| format!("{} %arg.{index}", Self::type_(type_)))
             .collect::<Vec<_>>().join(", ");
+
         writeln!(self.functions, "define {linkage}{return_type} @tannin.{}({parameters}) {{", function.name).unwrap();
+
         self.start_block("entry");
 
         for (index, type_) in function.locals.iter().enumerate() {
@@ -253,7 +263,9 @@ impl Emitter {
 
         self.branch(&test);
         self.start_block(&test);
+
         let condition = self.emit_value(condition)?;
+
         self.branch_if(&condition, &repeat, &done);
 
         self.start_block(&repeat);
@@ -277,19 +289,26 @@ impl Emitter {
         let condition = self.emit_value(condition)?;
         let then_label = self.label();
         let else_label = self.label();
+
         let end = self.label();
+
         let mut incoming = Vec::new();
+
         self.branch_if(&condition, &then_label, &else_label);
 
         self.start_block(&then_label);
+
         let then_value = self.emit_expression(then_branch)?;
+
         self.connect(&end, then_value, &mut incoming);
 
         self.start_block(&else_label);
+
         let else_value = match else_branch {
             Some(branch) => self.emit_expression(branch)?,
             None => None,
         };
+
         self.connect(&end, else_value, &mut incoming);
 
         Ok(self.join(&end, type_, incoming))
@@ -465,6 +484,7 @@ impl Emitter {
         let element_type = Self::type_(type_);
         let length = elements.len();
         let array = self.allocate(&format!("{{ {size}, [{length} x {element_type}] }}"));
+
         self.instruction(format_args!("store {size} {length}, ptr {array}"));
 
         for (index, element) in elements.iter().enumerate() {
@@ -484,32 +504,42 @@ impl Emitter {
         let ValueType::Array(element) = object.value_type() else {
             unreachable!("checked index");
         };
+
         let ValueType::Integer { width, signed } = index.value_type() else {
             unreachable!("checked index type");
         };
+
         let array = self.emit_value(object)?;
         let index = self.emit_value(index)?;
         let size = Self::size_type();
         let bits = width.bits();
+
         let index_type = format!("i{bits}");
         let compare_type = format!("i{}", bits.max(usize::BITS));
+
         let length = self.value(format_args!("load {size}, ptr {array}"));
+
         let length = if bits > usize::BITS {
             self.value(format_args!("zext {size} {length} to {compare_type}"))
         } else {
             length
         };
+
         let negative = signed.then(|| self.value(format_args!("icmp slt {index_type} {index}, 0")));
+
         let index = if bits < usize::BITS {
             self.value(format_args!("zext {index_type} {index} to {compare_type}"))
         } else {
             index
         };
+
         let outside = self.value(format_args!("icmp uge {compare_type} {index}, {length}"));
+
         let invalid = match negative {
             Some(negative) => self.value(format_args!("or i1 {negative}, {outside}")),
             None => outside,
         };
+
         self.trap_if(&invalid);
 
         let index = if bits > usize::BITS {
@@ -529,12 +559,14 @@ impl Emitter {
     fn allocate(&mut self, layout: &str) -> String {
         self.needs_malloc = true;
         let size = Self::size_type();
+
         let end = self.value(format_args!("getelementptr {layout}, ptr null, i32 1"));
         let bytes = self.value(format_args!("ptrtoint ptr {end} to {size}"));
         let empty = self.value(format_args!("icmp eq {size} {bytes}, 0"));
         let bytes = self.value(format_args!("select i1 {empty}, {size} 1, {size} {bytes}"));
         let object = self.value(format_args!("call ptr @malloc({size} {bytes})"));
         let failed = self.value(format_args!("icmp eq ptr {object}, null"));
+
         self.trap_if(&failed);
 
         object
@@ -550,6 +582,7 @@ impl Emitter {
 
         let address = self.emit_place(target)?;
         let type_ = target.value_type();
+
         let operator = match operator {
             Assign => None,
             AddAssign => Some(BinaryOperator::Add),
@@ -563,6 +596,7 @@ impl Emitter {
             LeftShiftAssign => Some(BinaryOperator::LeftShift),
             RightShiftAssign => Some(BinaryOperator::RightShift),
         };
+
         let value = if let Some(operator) = operator {
             let old = self.load(type_, &address);
             let right = self.emit_value(value)?;
@@ -570,6 +604,7 @@ impl Emitter {
         } else {
             self.emit_value(value)?
         };
+
         self.store(type_, &value, &address);
 
         Ok(value)
@@ -580,6 +615,7 @@ impl Emitter {
 
         let type_ = operand.value_type();
         let llvm_type = Self::type_(type_);
+
         let value = match operator {
             Negate => {
                 let operand = self.emit_value(operand)?;
@@ -793,8 +829,10 @@ impl Emitter {
 
     fn trap_if(&mut self, condition: &str) {
         self.needs_trap = true;
+
         let trap = self.label();
         let next = self.label();
+
         self.branch_if(condition, &trap, &next);
         self.start_block(&trap);
         self.instruction(format_args!("call void @llvm.trap()"));

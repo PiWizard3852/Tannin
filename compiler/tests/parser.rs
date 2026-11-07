@@ -1,5 +1,5 @@
 use compiler::lexer::Scanner;
-use compiler::parser::{Parser,ast::*};
+use compiler::parser::{ast::*, Parser};
 
 fn parse(source: &str) -> Program {
     let mut scanner = Scanner::new(source);

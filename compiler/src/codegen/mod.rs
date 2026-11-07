@@ -1,3 +1,3 @@
-mod llvm;
+pub use llvm::{CodegenError, CodegenResult, emit_llvm};
 
-pub use llvm::{emit_llvm, CodegenError, CodegenResult};
+mod llvm;

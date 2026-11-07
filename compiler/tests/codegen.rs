@@ -14,6 +14,7 @@ impl Scratch {
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed),
         ));
+
         fs::create_dir(&path).expect("could not create test directory");
 
         Self(path)
@@ -31,13 +32,16 @@ fn compile_and_run(source: &str) -> ExitStatus {
     let input = scratch.0.join("test.tn");
     let ir = scratch.0.join("test.ll");
     let executable = scratch.0.join("test");
+
     fs::write(&input, source).expect("could not write Tannin source");
 
     let compiler = Command::new(env!("CARGO_BIN_EXE_compiler"))
         .arg(&input)
         .output()
         .expect("could not run compiler");
+
     assert!(compiler.status.success(), "{}", String::from_utf8_lossy(&compiler.stderr));
+
     fs::write(&ir, compiler.stdout).expect("could not write LLVM IR");
 
     let clang = std::env::var_os("CLANG").unwrap_or_else(|| "clang".into());
@@ -47,6 +51,7 @@ fn compile_and_run(source: &str) -> ExitStatus {
         .arg(&ir)
         .output()
         .expect("could not run clang");
+
     assert!(linker.status.success(), "{}", String::from_utf8_lossy(&linker.stderr));
 
     Command::new(&executable).status().expect("could not run generated executable")
